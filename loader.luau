@@ -45,6 +45,9 @@ local vehicleFlySpeed = 90
 local vehicleFlyRoot = nil
 local vehicleFlyVelocity = nil
 local vehicleFlyGyro = nil
+local vehicleFlySeat = nil
+local vehicleFlyLastSeat = nil
+local vehicleFlyNextSeatScan = 0
 local espEnabled = false
 local espEntries = {}
 local espToggleKey = nil
@@ -913,61 +916,49 @@ local function createWaypointSpot(name)
 
 	local marker = Instance.new("Part")
 	marker.Name = "WaypointSpot_" .. name
-	marker.Shape = Enum.PartType.Ball
-	marker.Size = Vector3.new(1.35, 1.35, 1.35)
+	marker.Size = Vector3.new(0.2, 0.2, 0.2)
 	marker.CFrame = waypoint.cframe
 	marker.Anchored = true
 	marker.CanCollide = false
 	marker.CanTouch = false
 	marker.CanQuery = false
-	marker.Material = Enum.Material.Neon
-	marker.Color = colors.accent
-	marker.Transparency = 0.12
+	marker.Transparency = 1
 	marker.Parent = waypointSpotFolder
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "WaypointLabel"
 	billboard.AlwaysOnTop = true
 	billboard.MaxDistance = 100000
-	billboard.Size = UDim2.new(0, 160, 0, 54)
-	billboard.StudsOffset = Vector3.new(0, 2.4, 0)
+	billboard.Size = UDim2.new(0, 110, 0, 34)
+	billboard.StudsOffset = Vector3.new(0, 1.25, 0)
 	billboard.Adornee = marker
 	billboard.Parent = marker
 
-	local container = Instance.new("Frame")
-	container.Size = UDim2.new(1, 0, 1, 0)
-	container.BackgroundColor3 = Color3.fromRGB(4, 12, 24)
-	container.BackgroundTransparency = 0.18
-	container.BorderSizePixel = 0
-	container.Parent = billboard
-	addCorner(container, 8)
-	addStroke(container, colors.stroke, 1, 0.35)
-
 	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Size = UDim2.new(1, -10, 0, 26)
-	nameLabel.Position = UDim2.new(0, 5, 0, 4)
+	nameLabel.Size = UDim2.new(1, 0, 0, 18)
+	nameLabel.Position = UDim2.new(0, 0, 0, 0)
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Text = name
 	nameLabel.TextColor3 = colors.text
 	nameLabel.Font = Enum.Font.GothamBold
-	nameLabel.TextSize = 13
-	nameLabel.TextStrokeTransparency = 0.55
-	nameLabel.Parent = container
+	nameLabel.TextSize = 10
+	nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	nameLabel.TextStrokeTransparency = 0.35
+	nameLabel.Parent = billboard
 
-	local distanceLabel = Instance.new("TextLabel")
-	distanceLabel.Size = UDim2.new(1, -10, 0, 18)
-	distanceLabel.Position = UDim2.new(0, 5, 0, 29)
-	distanceLabel.BackgroundTransparency = 1
-	distanceLabel.Text = "..."
-	distanceLabel.TextColor3 = colors.muted
-	distanceLabel.Font = Enum.Font.Gotham
-	distanceLabel.TextSize = 12
-	distanceLabel.TextStrokeTransparency = 0.65
-	distanceLabel.Parent = container
+	local diamond = Instance.new("Frame")
+	diamond.Size = UDim2.new(0, 9, 0, 9)
+	diamond.Position = UDim2.new(0.5, -4, 0, 21)
+	diamond.BackgroundColor3 = colors.accent
+	diamond.BackgroundTransparency = 0.05
+	diamond.BorderSizePixel = 0
+	diamond.Rotation = 45
+	diamond.Parent = billboard
+	addStroke(diamond, colors.text, 1, 0.45)
 
 	waypointSpotEntries[name] = {
 		marker = marker,
-		distanceLabel = distanceLabel,
+		nameLabel = nameLabel,
 	}
 end
 
@@ -1002,22 +993,13 @@ local function updateWaypointSpotDistances()
 		return
 	end
 
-	local myRoot = getRoot(player.Character)
-
 	for name, entry in pairs(waypointSpotEntries) do
 		local waypoint = waypoints[name]
 
 		if not waypoint or not waypoint.cframe then
 			clearWaypointSpot(name)
-		elseif entry.marker and entry.distanceLabel then
+		elseif entry.marker then
 			entry.marker.CFrame = waypoint.cframe
-
-			if myRoot then
-				local distance = math.floor((myRoot.Position - waypoint.cframe.Position).Magnitude)
-				entry.distanceLabel.Text = tostring(distance) .. " studs"
-			else
-				entry.distanceLabel.Text = "..."
-			end
 		end
 	end
 end
@@ -1100,6 +1082,7 @@ local function clearVehicleFlyForces()
 	end
 
 	vehicleFlyRoot = nil
+	vehicleFlySeat = nil
 end
 
 local function getSeatedVehicleRoot()
@@ -1107,24 +1090,46 @@ local function getSeatedVehicleRoot()
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local seatPart = humanoid and humanoid.SeatPart
 
-	if not seatPart or not seatPart:IsA("BasePart") then
-		return nil
+	if not seatPart and vehicleFlyLastSeat and vehicleFlyLastSeat.Parent and vehicleFlyLastSeat.Occupant == humanoid then
+		seatPart = vehicleFlyLastSeat
 	end
 
-	return seatPart.AssemblyRootPart or seatPart
+	if not seatPart and os.clock() >= vehicleFlyNextSeatScan then
+		vehicleFlyNextSeatScan = os.clock() + 0.45
+
+		for _, descendant in ipairs(workspace:GetDescendants()) do
+			if descendant:IsA("VehicleSeat") and descendant.Occupant == humanoid then
+				seatPart = descendant
+				vehicleFlyLastSeat = descendant
+				break
+			end
+		end
+	end
+
+	if not seatPart or not seatPart:IsA("BasePart") then
+		return nil, nil
+	end
+
+	vehicleFlyLastSeat = seatPart
+	return seatPart.AssemblyRootPart or seatPart, seatPart
 end
 
-local function ensureVehicleFlyForces(root)
+local function ensureVehicleFlyForces(root, seatPart)
 	if vehicleFlyRoot ~= root then
 		clearVehicleFlyForces()
 		vehicleFlyRoot = root
+		vehicleFlySeat = seatPart
+	end
+
+	if vehicleFlySeat ~= seatPart then
+		vehicleFlySeat = seatPart
 	end
 
 	if not vehicleFlyVelocity then
 		vehicleFlyVelocity = Instance.new("BodyVelocity")
 		vehicleFlyVelocity.Name = "VehicleFlyVelocity"
-		vehicleFlyVelocity.MaxForce = Vector3.new(10000000, 10000000, 10000000)
-		vehicleFlyVelocity.P = 12500
+		vehicleFlyVelocity.MaxForce = Vector3.new(1000000000, 1000000000, 1000000000)
+		vehicleFlyVelocity.P = 50000
 		vehicleFlyVelocity.Velocity = Vector3.new(0, 0, 0)
 		vehicleFlyVelocity.Parent = root
 	end
@@ -1132,12 +1137,16 @@ local function ensureVehicleFlyForces(root)
 	if not vehicleFlyGyro then
 		vehicleFlyGyro = Instance.new("BodyGyro")
 		vehicleFlyGyro.Name = "VehicleFlyGyro"
-		vehicleFlyGyro.MaxTorque = Vector3.new(10000000, 10000000, 10000000)
-		vehicleFlyGyro.P = 12500
-		vehicleFlyGyro.D = 650
+		vehicleFlyGyro.MaxTorque = Vector3.new(1000000000, 1000000000, 1000000000)
+		vehicleFlyGyro.P = 50000
+		vehicleFlyGyro.D = 900
 		vehicleFlyGyro.CFrame = root.CFrame
 		vehicleFlyGyro.Parent = root
 	end
+
+	pcall(function()
+		root:SetNetworkOwner(player)
+	end)
 end
 
 local function updateVehicleFlyKeybindButton()
@@ -1160,37 +1169,50 @@ local function setVehicleFlyEnabled(enabled)
 	playerStatus.Text = enabled and "Car fly enabled. Sit in a vehicle and use WASD, Space, and Ctrl/Q." or "Car fly disabled."
 end
 
-local function updateVehicleFly()
+local function updateVehicleFly(deltaTime)
 	if not vehicleFlyEnabled then
 		return
 	end
 
-	local root = getSeatedVehicleRoot()
+	local root, seatPart = getSeatedVehicleRoot()
 	if not root then
 		clearVehicleFlyForces()
 		return
 	end
 
-	ensureVehicleFlyForces(root)
+	ensureVehicleFlyForces(root, seatPart)
 
 	local camera = workspace.CurrentCamera
 	local cameraCFrame = camera and camera.CFrame or root.CFrame
+	local forward = Vector3.new(cameraCFrame.LookVector.X, 0, cameraCFrame.LookVector.Z)
+	local right = Vector3.new(cameraCFrame.RightVector.X, 0, cameraCFrame.RightVector.Z)
 	local movement = Vector3.new(0, 0, 0)
 
+	if forward.Magnitude < 0.01 then
+		forward = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+	end
+
+	if right.Magnitude < 0.01 then
+		right = Vector3.new(root.CFrame.RightVector.X, 0, root.CFrame.RightVector.Z)
+	end
+
+	forward = forward.Magnitude > 0 and forward.Unit or Vector3.new(0, 0, -1)
+	right = right.Magnitude > 0 and right.Unit or Vector3.new(1, 0, 0)
+
 	if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-		movement += cameraCFrame.LookVector
+		movement += forward
 	end
 
 	if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-		movement -= cameraCFrame.LookVector
+		movement -= forward
 	end
 
 	if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-		movement += cameraCFrame.RightVector
+		movement += right
 	end
 
 	if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-		movement -= cameraCFrame.RightVector
+		movement -= right
 	end
 
 	if UserInputService:IsKeyDown(Enum.KeyCode.Space) or UserInputService:IsKeyDown(Enum.KeyCode.E) then
@@ -1201,16 +1223,27 @@ local function updateVehicleFly()
 		movement -= Vector3.new(0, 1, 0)
 	end
 
+	local targetVelocity = Vector3.new(0, 0, 0)
+
 	if movement.Magnitude > 0 then
-		vehicleFlyVelocity.Velocity = movement.Unit * vehicleFlySpeed
-	else
-		vehicleFlyVelocity.Velocity = Vector3.new(0, 0, 0)
+		targetVelocity = movement.Unit * vehicleFlySpeed
 	end
 
-	local lookVector = cameraCFrame.LookVector
-	if lookVector.Magnitude > 0 then
-		vehicleFlyGyro.CFrame = CFrame.lookAt(root.Position, root.Position + lookVector)
+	vehicleFlyVelocity.Velocity = targetVelocity
+	root.AssemblyLinearVelocity = targetVelocity
+	root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+
+	if seatPart and seatPart.Parent then
+		seatPart.AssemblyLinearVelocity = targetVelocity
+		seatPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
 	end
+
+	local step = math.clamp(deltaTime or 0.016, 0, 0.05)
+	local nextPosition = root.Position + (targetVelocity * step)
+	local targetCFrame = CFrame.lookAt(nextPosition, nextPosition + forward, Vector3.new(0, 1, 0))
+
+	vehicleFlyGyro.CFrame = targetCFrame
+	root.CFrame = targetCFrame
 end
 
 local clearWorldEsp
