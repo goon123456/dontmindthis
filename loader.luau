@@ -31,6 +31,13 @@ local noclipEnabled = false
 local noclipRebinding = false
 local noclipKey = Enum.KeyCode.N
 local noclipOriginalCollisions = {}
+local vehicleFlyEnabled = false
+local vehicleFlyRebinding = false
+local vehicleFlyKey = Enum.KeyCode.V
+local vehicleFlySpeed = 90
+local vehicleFlyRoot = nil
+local vehicleFlyVelocity = nil
+local vehicleFlyGyro = nil
 local espEnabled = false
 local espEntries = {}
 local unloaded = false
@@ -248,8 +255,8 @@ espFolder.Name = "TeleportESP"
 espFolder.Parent = playerGui
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 560, 0, 360)
-mainFrame.Position = UDim2.new(0.5, -280, 0.5, -180)
+mainFrame.Size = UDim2.new(0, 600, 0, 400)
+mainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
 mainFrame.BackgroundColor3 = colors.panel
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
@@ -572,9 +579,15 @@ createLabel(playerPage, "Noclip", UDim2.new(0, 26, 0, 18), UDim2.new(0, 230, 0, 
 local noclipButton = createButton(playerPage, "Noclip: Off", UDim2.new(0, 26, 0, 48), UDim2.new(0, 154, 0, 42), colors.buttonDark)
 local noclipKeybindButton = createButton(playerPage, "Key: N", UDim2.new(0, 194, 0, 48), UDim2.new(0, 154, 0, 42), colors.buttonDark)
 
-createLabel(playerPage, "ESP", UDim2.new(0, 26, 0, 118), UDim2.new(0, 230, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
-local espButton = createButton(playerPage, "ESP: Off", UDim2.new(0, 26, 0, 148), UDim2.new(0, 154, 0, 42), colors.buttonDark)
-local playerStatus = createLabel(playerPage, "Noclip key: N. ESP shows distance and health.", UDim2.new(0, 26, 0, 224), UDim2.new(0, 360, 0, 40), 12, colors.muted)
+createLabel(playerPage, "Vehicle fly", UDim2.new(0, 26, 0, 98), UDim2.new(0, 230, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
+createLabel(playerPage, "Speed", UDim2.new(0, 324, 0, 98), UDim2.new(0, 72, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
+local vehicleFlyButton = createButton(playerPage, "Car Fly: Off", UDim2.new(0, 26, 0, 128), UDim2.new(0, 154, 0, 42), colors.buttonDark)
+local vehicleFlyKeybindButton = createButton(playerPage, "Key: V", UDim2.new(0, 194, 0, 128), UDim2.new(0, 116, 0, 42), colors.buttonDark)
+local vehicleFlySpeedBox = createTextBox(playerPage, tostring(vehicleFlySpeed), "Speed", UDim2.new(0, 324, 0, 128), UDim2.new(0, 72, 0, 42))
+
+createLabel(playerPage, "ESP", UDim2.new(0, 26, 0, 194), UDim2.new(0, 230, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
+local espButton = createButton(playerPage, "ESP: Off", UDim2.new(0, 26, 0, 224), UDim2.new(0, 154, 0, 42), colors.buttonDark)
+local playerStatus = createLabel(playerPage, "Noclip: N. Car fly: V. ESP shows distance and health.", UDim2.new(0, 26, 0, 282), UDim2.new(0, 400, 0, 34), 12, colors.muted)
 playerStatus.Font = Enum.Font.Gotham
 
 createLabel(settingsPage, "Menu keybind", UDim2.new(0, 26, 0, 18), UDim2.new(0, 250, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
@@ -691,6 +704,136 @@ local function updateNoclipKeybindButton()
 		noclipKeybindButton.Text = "Press a key..."
 	else
 		noclipKeybindButton.Text = "Key: " .. noclipKey.Name
+	end
+end
+
+local function clearVehicleFlyForces()
+	if vehicleFlyVelocity then
+		vehicleFlyVelocity:Destroy()
+		vehicleFlyVelocity = nil
+	end
+
+	if vehicleFlyGyro then
+		vehicleFlyGyro:Destroy()
+		vehicleFlyGyro = nil
+	end
+
+	if vehicleFlyRoot and vehicleFlyRoot.Parent then
+		vehicleFlyRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+		vehicleFlyRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+	end
+
+	vehicleFlyRoot = nil
+end
+
+local function getSeatedVehicleRoot()
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local seatPart = humanoid and humanoid.SeatPart
+
+	if not seatPart or not seatPart:IsA("BasePart") then
+		return nil
+	end
+
+	return seatPart.AssemblyRootPart or seatPart
+end
+
+local function ensureVehicleFlyForces(root)
+	if vehicleFlyRoot ~= root then
+		clearVehicleFlyForces()
+		vehicleFlyRoot = root
+	end
+
+	if not vehicleFlyVelocity then
+		vehicleFlyVelocity = Instance.new("BodyVelocity")
+		vehicleFlyVelocity.Name = "VehicleFlyVelocity"
+		vehicleFlyVelocity.MaxForce = Vector3.new(10000000, 10000000, 10000000)
+		vehicleFlyVelocity.P = 12500
+		vehicleFlyVelocity.Velocity = Vector3.new(0, 0, 0)
+		vehicleFlyVelocity.Parent = root
+	end
+
+	if not vehicleFlyGyro then
+		vehicleFlyGyro = Instance.new("BodyGyro")
+		vehicleFlyGyro.Name = "VehicleFlyGyro"
+		vehicleFlyGyro.MaxTorque = Vector3.new(10000000, 10000000, 10000000)
+		vehicleFlyGyro.P = 12500
+		vehicleFlyGyro.D = 650
+		vehicleFlyGyro.CFrame = root.CFrame
+		vehicleFlyGyro.Parent = root
+	end
+end
+
+local function updateVehicleFlyKeybindButton()
+	if vehicleFlyRebinding then
+		vehicleFlyKeybindButton.Text = "Press..."
+	else
+		vehicleFlyKeybindButton.Text = "Key: " .. vehicleFlyKey.Name
+	end
+end
+
+local function setVehicleFlyEnabled(enabled)
+	vehicleFlyEnabled = enabled
+
+	if not enabled then
+		clearVehicleFlyForces()
+	end
+
+	vehicleFlyButton.Text = enabled and "Car Fly: On" or "Car Fly: Off"
+	vehicleFlyButton.BackgroundColor3 = enabled and colors.green or colors.buttonDark
+	playerStatus.Text = enabled and "Car fly enabled. Sit in a vehicle and use WASD, Space, and Ctrl/Q." or "Car fly disabled."
+end
+
+local function updateVehicleFly()
+	if not vehicleFlyEnabled then
+		return
+	end
+
+	local root = getSeatedVehicleRoot()
+	if not root then
+		clearVehicleFlyForces()
+		return
+	end
+
+	ensureVehicleFlyForces(root)
+
+	local camera = workspace.CurrentCamera
+	local cameraCFrame = camera and camera.CFrame or root.CFrame
+	local movement = Vector3.new(0, 0, 0)
+
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+		movement += cameraCFrame.LookVector
+	end
+
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+		movement -= cameraCFrame.LookVector
+	end
+
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+		movement += cameraCFrame.RightVector
+	end
+
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+		movement -= cameraCFrame.RightVector
+	end
+
+	if UserInputService:IsKeyDown(Enum.KeyCode.Space) or UserInputService:IsKeyDown(Enum.KeyCode.E) then
+		movement += Vector3.new(0, 1, 0)
+	end
+
+	if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.Q) then
+		movement -= Vector3.new(0, 1, 0)
+	end
+
+	if movement.Magnitude > 0 then
+		vehicleFlyVelocity.Velocity = movement.Unit * vehicleFlySpeed
+	else
+		vehicleFlyVelocity.Velocity = Vector3.new(0, 0, 0)
+	end
+
+	local lookVector = cameraCFrame.LookVector
+	if lookVector.Magnitude > 0 then
+		vehicleFlyGyro.CFrame = CFrame.lookAt(root.Position, root.Position + lookVector)
 	end
 end
 
@@ -852,6 +995,7 @@ local function setEspEnabled(enabled)
 end
 
 connect(RunService.Stepped, applyNoclip)
+connect(RunService.RenderStepped, updateVehicleFly)
 connect(RunService.RenderStepped, updateEsp)
 
 local function unloadMenu()
@@ -862,6 +1006,7 @@ local function unloadMenu()
 	running = false
 	waypointRunning = false
 	setNoclipEnabled(false)
+	setVehicleFlyEnabled(false)
 	setEspEnabled(false)
 	unloaded = true
 
@@ -950,6 +1095,7 @@ local function startTeleport()
 	end
 
 	stopWaypointTeleport()
+	setVehicleFlyEnabled(false)
 
 	running = true
 	startButton.Text = "Stop"
@@ -999,6 +1145,7 @@ local function startWaypointTeleport()
 	end
 
 	stopTeleport()
+	setVehicleFlyEnabled(false)
 
 	activeWaypointLoopName = selectedWaypointName
 	waypointRunning = true
@@ -1174,10 +1321,44 @@ end)
 
 connect(noclipKeybindButton.MouseButton1Click, function()
 	rebinding = false
+	vehicleFlyRebinding = false
 	updateKeybindButton()
+	updateVehicleFlyKeybindButton()
 	noclipRebinding = true
 	updateNoclipKeybindButton()
 	playerStatus.Text = "Press a keyboard key. Escape cancels."
+end)
+
+connect(vehicleFlyButton.MouseButton1Click, function()
+	if not vehicleFlyEnabled then
+		stopTeleport()
+		stopWaypointTeleport()
+	end
+
+	setVehicleFlyEnabled(not vehicleFlyEnabled)
+end)
+
+connect(vehicleFlyKeybindButton.MouseButton1Click, function()
+	rebinding = false
+	noclipRebinding = false
+	updateKeybindButton()
+	updateNoclipKeybindButton()
+	vehicleFlyRebinding = true
+	updateVehicleFlyKeybindButton()
+	playerStatus.Text = "Press a keyboard key. Escape cancels."
+end)
+
+connect(vehicleFlySpeedBox.FocusLost, function()
+	local newSpeed = tonumber(vehicleFlySpeedBox.Text)
+
+	if newSpeed then
+		vehicleFlySpeed = math.clamp(math.floor(newSpeed), 10, 500)
+		vehicleFlySpeedBox.Text = tostring(vehicleFlySpeed)
+		playerStatus.Text = "Car fly speed set to " .. tostring(vehicleFlySpeed) .. "."
+	else
+		vehicleFlySpeedBox.Text = tostring(vehicleFlySpeed)
+		playerStatus.Text = "Enter a valid car fly speed."
+	end
 end)
 
 connect(espButton.MouseButton1Click, function()
@@ -1186,7 +1367,9 @@ end)
 
 connect(keybindButton.MouseButton1Click, function()
 	noclipRebinding = false
+	vehicleFlyRebinding = false
 	updateNoclipKeybindButton()
+	updateVehicleFlyKeybindButton()
 	rebinding = true
 	updateKeybindButton()
 	settingsStatus.Text = "Press a keyboard key. Escape cancels."
@@ -1212,8 +1395,8 @@ connect(UserInputService.InputBegan, function(input)
 		end
 
 		if input.KeyCode ~= Enum.KeyCode.Unknown then
-			if input.KeyCode == noclipKey then
-				settingsStatus.Text = "That key is used for noclip."
+			if input.KeyCode == noclipKey or input.KeyCode == vehicleFlyKey then
+				settingsStatus.Text = "That key is already used in the Player tab."
 				return
 			end
 
@@ -1234,8 +1417,8 @@ connect(UserInputService.InputBegan, function(input)
 		end
 
 		if input.KeyCode ~= Enum.KeyCode.Unknown then
-			if input.KeyCode == menuKey then
-				playerStatus.Text = "That key is used to hide/show the menu."
+			if input.KeyCode == menuKey or input.KeyCode == vehicleFlyKey then
+				playerStatus.Text = "That key is already used."
 				return
 			end
 
@@ -1243,6 +1426,28 @@ connect(UserInputService.InputBegan, function(input)
 			noclipRebinding = false
 			updateNoclipKeybindButton()
 			playerStatus.Text = "Noclip key set to " .. noclipKey.Name .. "."
+			return
+		end
+	end
+
+	if vehicleFlyRebinding then
+		if input.KeyCode == Enum.KeyCode.Escape then
+			vehicleFlyRebinding = false
+			updateVehicleFlyKeybindButton()
+			playerStatus.Text = "Rebind cancelled."
+			return
+		end
+
+		if input.KeyCode ~= Enum.KeyCode.Unknown then
+			if input.KeyCode == menuKey or input.KeyCode == noclipKey then
+				playerStatus.Text = "That key is already used."
+				return
+			end
+
+			vehicleFlyKey = input.KeyCode
+			vehicleFlyRebinding = false
+			updateVehicleFlyKeybindButton()
+			playerStatus.Text = "Car fly key set to " .. vehicleFlyKey.Name .. "."
 			return
 		end
 	end
@@ -1258,11 +1463,22 @@ connect(UserInputService.InputBegan, function(input)
 
 	if input.KeyCode == noclipKey then
 		setNoclipEnabled(not noclipEnabled)
+		return
+	end
+
+	if input.KeyCode == vehicleFlyKey then
+		if not vehicleFlyEnabled then
+			stopTeleport()
+			stopWaypointTeleport()
+		end
+
+		setVehicleFlyEnabled(not vehicleFlyEnabled)
 	end
 end)
 
 connect(player.CharacterAdded, function()
 	noclipOriginalCollisions = {}
+	clearVehicleFlyForces()
 end)
 
 connect(Players.PlayerAdded, function(newPlayer)
@@ -1290,5 +1506,6 @@ refreshPlayerDropdown()
 refreshWaypointDropdown()
 updateKeybindButton()
 updateNoclipKeybindButton()
+updateVehicleFlyKeybindButton()
 setTab("TP")
 waypointStatus.Text = loadedWaypointMessage
