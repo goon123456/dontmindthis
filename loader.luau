@@ -19,10 +19,17 @@ if oldEspFolder then
 	oldEspFolder:Destroy()
 end
 
+local oldWaypointSpotFolder = workspace:FindFirstChild("TeleportWaypointSpots")
+if oldWaypointSpotFolder then
+	oldWaypointSpotFolder:Destroy()
+end
+
 local selectedTargetName = nil
 local selectedWaypointName = nil
 local waypoints = {}
 local waypointOrder = {}
+local waypointSpotsEnabled = false
+local waypointSpotEntries = {}
 
 local running = false
 local waypointRunning = false
@@ -253,6 +260,10 @@ screenGui.Parent = playerGui
 local espFolder = Instance.new("Folder")
 espFolder.Name = "TeleportESP"
 espFolder.Parent = playerGui
+
+local waypointSpotFolder = Instance.new("Folder")
+waypointSpotFolder.Name = "TeleportWaypointSpots"
+waypointSpotFolder.Parent = workspace
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.new(0, 600, 0, 400)
@@ -570,6 +581,7 @@ createLabel(waypointPage, "New waypoint", UDim2.new(0, 26, 0, 12), UDim2.new(0, 
 local saveWaypointButton = createButton(waypointPage, "Save Current", UDim2.new(0, 270, 0, 38), UDim2.new(0, 126, 0, 40), colors.green)
 
 local waypointDropdown = createDropdown(waypointPage, "Saved waypoints", 26, 104, 260, "Choose waypoint")
+local waypointSpotsButton = createButton(waypointPage, "Render Spots: Off", UDim2.new(0, 302, 0, 130), UDim2.new(0, 126, 0, 42), colors.buttonDark)
 local teleportWaypointButton = createButton(waypointPage, "Teleport", UDim2.new(0, 26, 0, 220), UDim2.new(0, 126, 0, 42), colors.accent)
 local deleteWaypointButton = createButton(waypointPage, "Delete", UDim2.new(0, 164, 0, 220), UDim2.new(0, 126, 0, 42), colors.red)
 local waypointStatus = createLabel(waypointPage, "No waypoints saved.", UDim2.new(0, 26, 0, 274), UDim2.new(0, 360, 0, 26), 12, colors.muted)
@@ -658,6 +670,162 @@ local function stopWaypointTeleport()
 
 	teleportWaypointButton.Text = "Teleport"
 	teleportWaypointButton.BackgroundColor3 = colors.accent
+end
+
+local function clearWaypointSpot(name)
+	local entry = waypointSpotEntries[name]
+	if not entry then
+		return
+	end
+
+	if entry.marker then
+		entry.marker:Destroy()
+	end
+
+	waypointSpotEntries[name] = nil
+end
+
+local function clearWaypointSpots()
+	for _, entry in pairs(waypointSpotEntries) do
+		if entry.marker then
+			entry.marker:Destroy()
+		end
+	end
+
+	waypointSpotEntries = {}
+end
+
+local function createWaypointSpot(name)
+	local waypoint = waypoints[name]
+	if not waypoint or not waypoint.cframe then
+		return
+	end
+
+	clearWaypointSpot(name)
+
+	local marker = Instance.new("Part")
+	marker.Name = "WaypointSpot_" .. name
+	marker.Shape = Enum.PartType.Ball
+	marker.Size = Vector3.new(1.35, 1.35, 1.35)
+	marker.CFrame = waypoint.cframe
+	marker.Anchored = true
+	marker.CanCollide = false
+	marker.CanTouch = false
+	marker.CanQuery = false
+	marker.Material = Enum.Material.Neon
+	marker.Color = colors.accent
+	marker.Transparency = 0.12
+	marker.Parent = waypointSpotFolder
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "WaypointLabel"
+	billboard.AlwaysOnTop = true
+	billboard.MaxDistance = 100000
+	billboard.Size = UDim2.new(0, 160, 0, 54)
+	billboard.StudsOffset = Vector3.new(0, 2.4, 0)
+	billboard.Adornee = marker
+	billboard.Parent = marker
+
+	local container = Instance.new("Frame")
+	container.Size = UDim2.new(1, 0, 1, 0)
+	container.BackgroundColor3 = Color3.fromRGB(4, 12, 24)
+	container.BackgroundTransparency = 0.18
+	container.BorderSizePixel = 0
+	container.Parent = billboard
+	addCorner(container, 8)
+	addStroke(container, colors.stroke, 1, 0.35)
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Size = UDim2.new(1, -10, 0, 26)
+	nameLabel.Position = UDim2.new(0, 5, 0, 4)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Text = name
+	nameLabel.TextColor3 = colors.text
+	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.TextSize = 13
+	nameLabel.TextStrokeTransparency = 0.55
+	nameLabel.Parent = container
+
+	local distanceLabel = Instance.new("TextLabel")
+	distanceLabel.Size = UDim2.new(1, -10, 0, 18)
+	distanceLabel.Position = UDim2.new(0, 5, 0, 29)
+	distanceLabel.BackgroundTransparency = 1
+	distanceLabel.Text = "..."
+	distanceLabel.TextColor3 = colors.muted
+	distanceLabel.Font = Enum.Font.Gotham
+	distanceLabel.TextSize = 12
+	distanceLabel.TextStrokeTransparency = 0.65
+	distanceLabel.Parent = container
+
+	waypointSpotEntries[name] = {
+		marker = marker,
+		distanceLabel = distanceLabel,
+	}
+end
+
+local function refreshWaypointSpots()
+	if not waypointSpotsEnabled then
+		return
+	end
+
+	local validNames = {}
+
+	for _, name in ipairs(waypointOrder) do
+		if waypoints[name] then
+			validNames[name] = true
+
+			if waypointSpotEntries[name] then
+				waypointSpotEntries[name].marker.CFrame = waypoints[name].cframe
+			else
+				createWaypointSpot(name)
+			end
+		end
+	end
+
+	for name in pairs(waypointSpotEntries) do
+		if not validNames[name] then
+			clearWaypointSpot(name)
+		end
+	end
+end
+
+local function updateWaypointSpotDistances()
+	if not waypointSpotsEnabled then
+		return
+	end
+
+	local myRoot = getRoot(player.Character)
+
+	for name, entry in pairs(waypointSpotEntries) do
+		local waypoint = waypoints[name]
+
+		if not waypoint or not waypoint.cframe then
+			clearWaypointSpot(name)
+		elseif entry.marker and entry.distanceLabel then
+			entry.marker.CFrame = waypoint.cframe
+
+			if myRoot then
+				local distance = math.floor((myRoot.Position - waypoint.cframe.Position).Magnitude)
+				entry.distanceLabel.Text = tostring(distance) .. " studs"
+			else
+				entry.distanceLabel.Text = "..."
+			end
+		end
+	end
+end
+
+local function setWaypointSpotsEnabled(enabled)
+	waypointSpotsEnabled = enabled
+	waypointSpotsButton.Text = enabled and "Render Spots: On" or "Render Spots: Off"
+	waypointSpotsButton.BackgroundColor3 = enabled and colors.green or colors.buttonDark
+
+	if enabled then
+		refreshWaypointSpots()
+		waypointStatus.Text = "Waypoint spots enabled."
+	else
+		clearWaypointSpots()
+		waypointStatus.Text = "Waypoint spots disabled."
+	end
 end
 
 local function applyNoclip()
@@ -996,6 +1164,7 @@ end
 
 connect(RunService.Stepped, applyNoclip)
 connect(RunService.RenderStepped, updateVehicleFly)
+connect(RunService.RenderStepped, updateWaypointSpotDistances)
 connect(RunService.RenderStepped, updateEsp)
 
 local function unloadMenu()
@@ -1005,6 +1174,7 @@ local function unloadMenu()
 
 	running = false
 	waypointRunning = false
+	setWaypointSpotsEnabled(false)
 	setNoclipEnabled(false)
 	setVehicleFlyEnabled(false)
 	setEspEnabled(false)
@@ -1017,6 +1187,7 @@ local function unloadMenu()
 	end
 
 	espFolder:Destroy()
+	waypointSpotFolder:Destroy()
 	screenGui:Destroy()
 end
 
@@ -1263,6 +1434,7 @@ connect(saveWaypointButton.MouseButton1Click, function()
 	waypointDropdown:SetText(name)
 
 	refreshWaypointDropdown()
+	refreshWaypointSpots()
 
 	local savedToDisk, saveMessage = saveWaypointsToDisk()
 	if savedToDisk then
@@ -1270,6 +1442,10 @@ connect(saveWaypointButton.MouseButton1Click, function()
 	else
 		waypointStatus.Text = "Saved this session: " .. name .. " (" .. saveMessage .. ")"
 	end
+end)
+
+connect(waypointSpotsButton.MouseButton1Click, function()
+	setWaypointSpotsEnabled(not waypointSpotsEnabled)
 end)
 
 connect(teleportWaypointButton.MouseButton1Click, function()
@@ -1306,6 +1482,7 @@ connect(deleteWaypointButton.MouseButton1Click, function()
 	waypointDropdown:SetText("Choose waypoint")
 
 	refreshWaypointDropdown()
+	refreshWaypointSpots()
 
 	local savedToDisk, saveMessage = saveWaypointsToDisk()
 	if savedToDisk then
