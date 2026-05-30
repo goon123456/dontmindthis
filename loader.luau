@@ -3,6 +3,7 @@ local behindOffset = 125
 
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
@@ -13,6 +14,11 @@ if oldGui then
 	oldGui:Destroy()
 end
 
+local oldEspFolder = playerGui:FindFirstChild("TeleportESP")
+if oldEspFolder then
+	oldEspFolder:Destroy()
+end
+
 local selectedTargetName = nil
 local selectedWaypointName = nil
 local waypoints = {}
@@ -21,6 +27,12 @@ local waypointOrder = {}
 local running = false
 local waypointRunning = false
 local activeWaypointLoopName = nil
+local noclipEnabled = false
+local noclipRebinding = false
+local noclipKey = Enum.KeyCode.N
+local noclipOriginalCollisions = {}
+local espEnabled = false
+local espEntries = {}
 local unloaded = false
 local rebinding = false
 local menuKey = Enum.KeyCode.RightControl
@@ -231,6 +243,10 @@ screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
 
+local espFolder = Instance.new("Folder")
+espFolder.Name = "TeleportESP"
+espFolder.Parent = playerGui
+
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.new(0, 560, 0, 360)
 mainFrame.Position = UDim2.new(0.5, -280, 0.5, -180)
@@ -376,7 +392,8 @@ sideSub.Font = Enum.Font.Gotham
 
 local tpTab = createButton(sidebar, "TP", UDim2.new(0, 14, 0, 92), UDim2.new(1, -28, 0, 44), colors.accent)
 local waypointTab = createButton(sidebar, "Waypoints", UDim2.new(0, 14, 0, 146), UDim2.new(1, -28, 0, 44), colors.buttonDark)
-local settingsTab = createButton(sidebar, "Settings", UDim2.new(0, 14, 0, 200), UDim2.new(1, -28, 0, 44), colors.buttonDark)
+local playerTab = createButton(sidebar, "Player", UDim2.new(0, 14, 0, 200), UDim2.new(1, -28, 0, 44), colors.buttonDark)
+local settingsTab = createButton(sidebar, "Settings", UDim2.new(0, 14, 0, 254), UDim2.new(1, -28, 0, 44), colors.buttonDark)
 
 local headerTitle = createLabel(contentFrame, "Player Teleport", UDim2.new(0, 26, 0, 18), UDim2.new(1, -52, 0, 30), 21)
 local headerSub = createLabel(contentFrame, "Pick a player, set distance, then start.", UDim2.new(0, 26, 0, 46), UDim2.new(1, -52, 0, 22), 12, colors.muted)
@@ -401,6 +418,7 @@ end
 
 local tpPage = createPage()
 local waypointPage = createPage()
+local playerPage = createPage()
 local settingsPage = createPage()
 
 local dropdowns = {}
@@ -550,6 +568,15 @@ local deleteWaypointButton = createButton(waypointPage, "Delete", UDim2.new(0, 1
 local waypointStatus = createLabel(waypointPage, "No waypoints saved.", UDim2.new(0, 26, 0, 274), UDim2.new(0, 360, 0, 26), 12, colors.muted)
 waypointStatus.Font = Enum.Font.Gotham
 
+createLabel(playerPage, "Noclip", UDim2.new(0, 26, 0, 18), UDim2.new(0, 230, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
+local noclipButton = createButton(playerPage, "Noclip: Off", UDim2.new(0, 26, 0, 48), UDim2.new(0, 154, 0, 42), colors.buttonDark)
+local noclipKeybindButton = createButton(playerPage, "Key: N", UDim2.new(0, 194, 0, 48), UDim2.new(0, 154, 0, 42), colors.buttonDark)
+
+createLabel(playerPage, "ESP", UDim2.new(0, 26, 0, 118), UDim2.new(0, 230, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
+local espButton = createButton(playerPage, "ESP: Off", UDim2.new(0, 26, 0, 148), UDim2.new(0, 154, 0, 42), colors.buttonDark)
+local playerStatus = createLabel(playerPage, "Noclip key: N. ESP shows distance and health.", UDim2.new(0, 26, 0, 224), UDim2.new(0, 360, 0, 40), 12, colors.muted)
+playerStatus.Font = Enum.Font.Gotham
+
 createLabel(settingsPage, "Menu keybind", UDim2.new(0, 26, 0, 18), UDim2.new(0, 250, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
 local keybindButton = createButton(settingsPage, "Hide / Show: RightControl", UDim2.new(0, 26, 0, 48), UDim2.new(0, 230, 0, 42), colors.buttonDark)
 local unloadButton = createButton(settingsPage, "Unload", UDim2.new(0, 26, 0, 204), UDim2.new(0, 160, 0, 42), colors.red)
@@ -559,12 +586,14 @@ settingsStatus.Font = Enum.Font.Gotham
 local pages = {
 	TP = tpPage,
 	Waypoints = waypointPage,
+	Player = playerPage,
 	Settings = settingsPage,
 }
 
 local tabButtons = {
 	TP = tpTab,
 	Waypoints = waypointTab,
+	Player = playerTab,
 	Settings = settingsTab,
 }
 
@@ -586,6 +615,9 @@ local function setTab(tabName)
 	elseif tabName == "Waypoints" then
 		headerTitle.Text = "Waypoints"
 		headerSub.Text = "Save positions and teleport back later."
+	elseif tabName == "Player" then
+		headerTitle.Text = "Player"
+		headerSub.Text = "Toggle movement helpers and ESP."
 	else
 		headerTitle.Text = "Settings"
 		headerSub.Text = "Rebind the menu toggle or unload the script."
@@ -615,14 +647,223 @@ local function stopWaypointTeleport()
 	teleportWaypointButton.BackgroundColor3 = colors.accent
 end
 
+local function applyNoclip()
+	if not noclipEnabled then
+		return
+	end
+
+	local character = player.Character
+	if not character then
+		return
+	end
+
+	for _, descendant in ipairs(character:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			if noclipOriginalCollisions[descendant] == nil then
+				noclipOriginalCollisions[descendant] = descendant.CanCollide
+			end
+
+			descendant.CanCollide = false
+		end
+	end
+end
+
+local function setNoclipEnabled(enabled)
+	noclipEnabled = enabled
+
+	if not enabled then
+		for part, originalCanCollide in pairs(noclipOriginalCollisions) do
+			if part and part.Parent then
+				part.CanCollide = originalCanCollide
+			end
+		end
+
+		noclipOriginalCollisions = {}
+	end
+
+	noclipButton.Text = enabled and "Noclip: On" or "Noclip: Off"
+	noclipButton.BackgroundColor3 = enabled and colors.green or colors.buttonDark
+	playerStatus.Text = enabled and "Noclip enabled." or "Noclip disabled."
+end
+
+local function updateNoclipKeybindButton()
+	if noclipRebinding then
+		noclipKeybindButton.Text = "Press a key..."
+	else
+		noclipKeybindButton.Text = "Key: " .. noclipKey.Name
+	end
+end
+
+local function clearEspEntry(targetPlayer)
+	local entry = espEntries[targetPlayer]
+	if not entry then
+		return
+	end
+
+	if entry.billboard then
+		entry.billboard:Destroy()
+	end
+
+	espEntries[targetPlayer] = nil
+end
+
+local function clearEsp()
+	for _, entry in pairs(espEntries) do
+		if entry.billboard then
+			entry.billboard:Destroy()
+		end
+	end
+
+	espEntries = {}
+end
+
+local function createEspEntry(targetPlayer)
+	if targetPlayer == player or espEntries[targetPlayer] then
+		return
+	end
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "ESP_" .. targetPlayer.Name
+	billboard.AlwaysOnTop = true
+	billboard.Enabled = false
+	billboard.MaxDistance = 10000
+	billboard.Size = UDim2.new(0, 150, 0, 58)
+	billboard.StudsOffset = Vector3.new(0, 3.4, 0)
+	billboard.Parent = espFolder
+
+	local container = Instance.new("Frame")
+	container.Size = UDim2.new(1, 0, 1, 0)
+	container.BackgroundColor3 = Color3.fromRGB(4, 12, 24)
+	container.BackgroundTransparency = 0.18
+	container.BorderSizePixel = 0
+	container.Parent = billboard
+	addCorner(container, 8)
+	addStroke(container, colors.stroke, 1, 0.4)
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Size = UDim2.new(1, -10, 0, 20)
+	nameLabel.Position = UDim2.new(0, 5, 0, 3)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Text = targetPlayer.Name
+	nameLabel.TextColor3 = colors.text
+	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.TextSize = 12
+	nameLabel.TextStrokeTransparency = 0.55
+	nameLabel.Parent = container
+
+	local distanceLabel = Instance.new("TextLabel")
+	distanceLabel.Size = UDim2.new(1, -10, 0, 16)
+	distanceLabel.Position = UDim2.new(0, 5, 0, 22)
+	distanceLabel.BackgroundTransparency = 1
+	distanceLabel.Text = "..."
+	distanceLabel.TextColor3 = colors.muted
+	distanceLabel.Font = Enum.Font.Gotham
+	distanceLabel.TextSize = 11
+	distanceLabel.TextStrokeTransparency = 0.65
+	distanceLabel.Parent = container
+
+	local healthBar = Instance.new("Frame")
+	healthBar.Size = UDim2.new(1, -14, 0, 8)
+	healthBar.Position = UDim2.new(0, 7, 0, 43)
+	healthBar.BackgroundColor3 = Color3.fromRGB(18, 28, 45)
+	healthBar.BorderSizePixel = 0
+	healthBar.Parent = container
+	addCorner(healthBar, 5)
+
+	local healthFill = Instance.new("Frame")
+	healthFill.Size = UDim2.new(1, 0, 1, 0)
+	healthFill.BackgroundColor3 = colors.green
+	healthFill.BorderSizePixel = 0
+	healthFill.Parent = healthBar
+	addCorner(healthFill, 5)
+
+	espEntries[targetPlayer] = {
+		billboard = billboard,
+		nameLabel = nameLabel,
+		distanceLabel = distanceLabel,
+		healthFill = healthFill,
+	}
+end
+
+local function updateEsp()
+	if not espEnabled then
+		return
+	end
+
+	for _, targetPlayer in ipairs(Players:GetPlayers()) do
+		if targetPlayer ~= player and not espEntries[targetPlayer] then
+			createEspEntry(targetPlayer)
+		end
+	end
+
+	local myRoot = getRoot(player.Character)
+
+	for targetPlayer, entry in pairs(espEntries) do
+		if not targetPlayer.Parent then
+			clearEspEntry(targetPlayer)
+			continue
+		end
+
+		local character = targetPlayer.Character
+		local root = getRoot(character)
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local head = character and character:FindFirstChild("Head")
+
+		if myRoot and root and humanoid and (head or root) then
+			local distance = math.floor((myRoot.Position - root.Position).Magnitude)
+			local maxHealth = math.max(humanoid.MaxHealth, 1)
+			local healthPercent = math.clamp(humanoid.Health / maxHealth, 0, 1)
+
+			entry.billboard.Adornee = head or root
+			entry.billboard.Enabled = true
+			entry.nameLabel.Text = targetPlayer.Name
+			entry.distanceLabel.Text = tostring(distance) .. " studs"
+			entry.healthFill.Size = UDim2.new(healthPercent, 0, 1, 0)
+
+			if healthPercent > 0.5 then
+				entry.healthFill.BackgroundColor3 = colors.green
+			elseif healthPercent > 0.25 then
+				entry.healthFill.BackgroundColor3 = Color3.fromRGB(235, 185, 70)
+			else
+				entry.healthFill.BackgroundColor3 = colors.red
+			end
+		else
+			entry.billboard.Enabled = false
+		end
+	end
+end
+
+local function setEspEnabled(enabled)
+	espEnabled = enabled
+
+	espButton.Text = enabled and "ESP: On" or "ESP: Off"
+	espButton.BackgroundColor3 = enabled and colors.green or colors.buttonDark
+
+	if enabled then
+		for _, targetPlayer in ipairs(Players:GetPlayers()) do
+			createEspEntry(targetPlayer)
+		end
+
+		playerStatus.Text = "ESP enabled."
+	else
+		clearEsp()
+		playerStatus.Text = "ESP disabled."
+	end
+end
+
+connect(RunService.Stepped, applyNoclip)
+connect(RunService.RenderStepped, updateEsp)
+
 local function unloadMenu()
 	if unloaded then
 		return
 	end
 
-	unloaded = true
 	running = false
 	waypointRunning = false
+	setNoclipEnabled(false)
+	setEspEnabled(false)
+	unloaded = true
 
 	for _, connection in ipairs(connections) do
 		if connection.Connected then
@@ -630,6 +871,7 @@ local function unloadMenu()
 		end
 	end
 
+	espFolder:Destroy()
 	screenGui:Destroy()
 end
 
@@ -823,6 +1065,10 @@ connect(waypointTab.MouseButton1Click, function()
 	setTab("Waypoints")
 end)
 
+connect(playerTab.MouseButton1Click, function()
+	setTab("Player")
+end)
+
 connect(settingsTab.MouseButton1Click, function()
 	setTab("Settings")
 end)
@@ -922,7 +1168,25 @@ connect(deleteWaypointButton.MouseButton1Click, function()
 	end
 end)
 
+connect(noclipButton.MouseButton1Click, function()
+	setNoclipEnabled(not noclipEnabled)
+end)
+
+connect(noclipKeybindButton.MouseButton1Click, function()
+	rebinding = false
+	updateKeybindButton()
+	noclipRebinding = true
+	updateNoclipKeybindButton()
+	playerStatus.Text = "Press a keyboard key. Escape cancels."
+end)
+
+connect(espButton.MouseButton1Click, function()
+	setEspEnabled(not espEnabled)
+end)
+
 connect(keybindButton.MouseButton1Click, function()
+	noclipRebinding = false
+	updateNoclipKeybindButton()
 	rebinding = true
 	updateKeybindButton()
 	settingsStatus.Text = "Press a keyboard key. Escape cancels."
@@ -948,10 +1212,37 @@ connect(UserInputService.InputBegan, function(input)
 		end
 
 		if input.KeyCode ~= Enum.KeyCode.Unknown then
+			if input.KeyCode == noclipKey then
+				settingsStatus.Text = "That key is used for noclip."
+				return
+			end
+
 			menuKey = input.KeyCode
 			rebinding = false
 			updateKeybindButton()
 			settingsStatus.Text = "Keybind set to " .. menuKey.Name .. "."
+			return
+		end
+	end
+
+	if noclipRebinding then
+		if input.KeyCode == Enum.KeyCode.Escape then
+			noclipRebinding = false
+			updateNoclipKeybindButton()
+			playerStatus.Text = "Rebind cancelled."
+			return
+		end
+
+		if input.KeyCode ~= Enum.KeyCode.Unknown then
+			if input.KeyCode == menuKey then
+				playerStatus.Text = "That key is used to hide/show the menu."
+				return
+			end
+
+			noclipKey = input.KeyCode
+			noclipRebinding = false
+			updateNoclipKeybindButton()
+			playerStatus.Text = "Noclip key set to " .. noclipKey.Name .. "."
 			return
 		end
 	end
@@ -962,10 +1253,25 @@ connect(UserInputService.InputBegan, function(input)
 
 	if input.KeyCode == menuKey then
 		toggleMenu()
+		return
+	end
+
+	if input.KeyCode == noclipKey then
+		setNoclipEnabled(not noclipEnabled)
 	end
 end)
 
-connect(Players.PlayerAdded, refreshPlayerDropdown)
+connect(player.CharacterAdded, function()
+	noclipOriginalCollisions = {}
+end)
+
+connect(Players.PlayerAdded, function(newPlayer)
+	refreshPlayerDropdown()
+
+	if espEnabled then
+		createEspEntry(newPlayer)
+	end
+end)
 
 connect(Players.PlayerRemoving, function(leavingPlayer)
 	if selectedTargetName == leavingPlayer.Name then
@@ -975,6 +1281,7 @@ connect(Players.PlayerRemoving, function(leavingPlayer)
 		tpStatus.Text = "Target left."
 	end
 
+	clearEspEntry(leavingPlayer)
 	refreshPlayerDropdown()
 end)
 
@@ -982,5 +1289,6 @@ local loadedWaypointsOk, loadedWaypointCount, loadedWaypointMessage = loadWaypoi
 refreshPlayerDropdown()
 refreshWaypointDropdown()
 updateKeybindButton()
+updateNoclipKeybindButton()
 setTab("TP")
 waypointStatus.Text = loadedWaypointMessage
