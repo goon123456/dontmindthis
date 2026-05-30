@@ -533,11 +533,11 @@ local function createDropdown(parent, labelText, x, y, width, placeholder)
 	return dropdown
 end
 
-local playerDropdown = createDropdown(tpPage, "Player", 26, 12, 260, "Choose player")
-createLabel(tpPage, "Distance", UDim2.new(0, 26, 0, 118), UDim2.new(0, 180, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
-local distanceBox = createTextBox(tpPage, tostring(behindOffset), "125", UDim2.new(0, 26, 0, 144), UDim2.new(0, 160, 0, 40))
-local startButton = createButton(tpPage, "Start", UDim2.new(0, 26, 0, 214), UDim2.new(0, 160, 0, 42), colors.green)
-local tpStatus = createLabel(tpPage, "Ready.", UDim2.new(0, 210, 0, 220), UDim2.new(0, 180, 0, 30), 12, colors.muted)
+local playerDropdown = createDropdown(tpPage, "Player", 26, 12, 250, "Choose player")
+createLabel(tpPage, "Distance", UDim2.new(0, 296, 0, 12), UDim2.new(0, 110, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
+local distanceBox = createTextBox(tpPage, tostring(behindOffset), "125", UDim2.new(0, 296, 0, 38), UDim2.new(0, 100, 0, 40))
+local startButton = createButton(tpPage, "Start", UDim2.new(0, 296, 0, 96), UDim2.new(0, 100, 0, 42), colors.green)
+local tpStatus = createLabel(tpPage, "Ready.", UDim2.new(0, 26, 0, 250), UDim2.new(0, 370, 0, 30), 12, colors.muted)
 tpStatus.Font = Enum.Font.Gotham
 
 local waypointNameBox = createTextBox(waypointPage, "", "Waypoint name", UDim2.new(0, 26, 0, 38), UDim2.new(0, 230, 0, 40))
