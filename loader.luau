@@ -2,6 +2,7 @@
 local behindOffset = 125
 
 local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
@@ -22,6 +23,8 @@ local unloaded = false
 local rebinding = false
 local menuKey = Enum.KeyCode.RightControl
 local connections = {}
+local waypointStorageFile = "dontmindthis_waypoints_" .. tostring(game.PlaceId) .. "_" .. tostring(player.UserId) .. ".json"
+local persistentWaypointsEnabled = type(writefile) == "function" and type(readfile) == "function" and type(isfile) == "function"
 
 local function connect(signal, callback)
 	local connection = signal:Connect(callback)
@@ -35,6 +38,161 @@ end
 
 local function trim(text)
 	return tostring(text or ""):match("^%s*(.-)%s*$")
+end
+
+local function cframeToArray(cframe)
+	return { cframe:GetComponents() }
+end
+
+local function arrayToCFrame(values)
+	if type(values) ~= "table" or #values < 12 then
+		return nil
+	end
+
+	local components = {}
+
+	for index = 1, 12 do
+		local value = tonumber(values[index])
+
+		if not value then
+			return nil
+		end
+
+		components[index] = value
+	end
+
+	return CFrame.new(
+		components[1],
+		components[2],
+		components[3],
+		components[4],
+		components[5],
+		components[6],
+		components[7],
+		components[8],
+		components[9],
+		components[10],
+		components[11],
+		components[12]
+	)
+end
+
+local function uniqueLoadedWaypointName(rawName, usedNames)
+	local baseName = trim(rawName)
+
+	if baseName == "" then
+		baseName = "Waypoint"
+	end
+
+	local name = baseName
+	local index = 2
+
+	while usedNames[name] do
+		name = baseName .. " " .. index
+		index += 1
+	end
+
+	usedNames[name] = true
+	return name
+end
+
+local function saveWaypointsToDisk()
+	if not persistentWaypointsEnabled then
+		return false, "file saving unsupported"
+	end
+
+	local payload = {
+		version = 1,
+		placeId = game.PlaceId,
+		userId = player.UserId,
+		waypoints = {},
+	}
+
+	for _, name in ipairs(waypointOrder) do
+		local waypoint = waypoints[name]
+
+		if waypoint and waypoint.cframe then
+			table.insert(payload.waypoints, {
+				name = name,
+				cframe = cframeToArray(waypoint.cframe),
+			})
+		end
+	end
+
+	local encodeSuccess, encoded = pcall(function()
+		return HttpService:JSONEncode(payload)
+	end)
+
+	if not encodeSuccess then
+		return false, "could not encode waypoints"
+	end
+
+	local writeSuccess = pcall(function()
+		writefile(waypointStorageFile, encoded)
+	end)
+
+	if not writeSuccess then
+		return false, "could not write waypoint file"
+	end
+
+	return true, "saved"
+end
+
+local function loadWaypointsFromDisk()
+	if not persistentWaypointsEnabled then
+		return false, 0, "File saving unsupported; waypoints are session-only."
+	end
+
+	local existsSuccess, exists = pcall(function()
+		return isfile(waypointStorageFile)
+	end)
+
+	if not existsSuccess or not exists then
+		return true, 0, "Persistent waypoints ready. No saved waypoints yet."
+	end
+
+	local readSuccess, contents = pcall(function()
+		return readfile(waypointStorageFile)
+	end)
+
+	if not readSuccess or type(contents) ~= "string" then
+		return false, 0, "Saved waypoint file could not be read."
+	end
+
+	local decodeSuccess, payload = pcall(function()
+		return HttpService:JSONDecode(contents)
+	end)
+
+	if not decodeSuccess or type(payload) ~= "table" or type(payload.waypoints) ~= "table" then
+		return false, 0, "Saved waypoint file is invalid."
+	end
+
+	local loadedWaypoints = {}
+	local loadedOrder = {}
+	local usedNames = {}
+
+	for _, savedWaypoint in ipairs(payload.waypoints) do
+		if type(savedWaypoint) == "table" then
+			local cframe = arrayToCFrame(savedWaypoint.cframe)
+
+			if cframe then
+				local name = uniqueLoadedWaypointName(savedWaypoint.name, usedNames)
+				loadedWaypoints[name] = {
+					cframe = cframe,
+				}
+				table.insert(loadedOrder, name)
+			end
+		end
+	end
+
+	waypoints = loadedWaypoints
+	waypointOrder = loadedOrder
+
+	if #waypointOrder == 1 then
+		return true, 1, "Loaded 1 saved waypoint."
+	end
+
+	return true, #waypointOrder, "Loaded " .. tostring(#waypointOrder) .. " saved waypoints."
 end
 
 local colors = {
@@ -670,7 +828,13 @@ connect(saveWaypointButton.MouseButton1Click, function()
 	waypointDropdown:SetText(name)
 
 	refreshWaypointDropdown()
-	waypointStatus.Text = "Saved: " .. name
+
+	local savedToDisk, saveMessage = saveWaypointsToDisk()
+	if savedToDisk then
+		waypointStatus.Text = "Saved: " .. name
+	else
+		waypointStatus.Text = "Saved this session: " .. name .. " (" .. saveMessage .. ")"
+	end
 end)
 
 connect(teleportWaypointButton.MouseButton1Click, function()
@@ -710,7 +874,13 @@ connect(deleteWaypointButton.MouseButton1Click, function()
 	waypointDropdown:SetText("Choose waypoint")
 
 	refreshWaypointDropdown()
-	waypointStatus.Text = "Deleted: " .. deletedName
+
+	local savedToDisk, saveMessage = saveWaypointsToDisk()
+	if savedToDisk then
+		waypointStatus.Text = "Deleted: " .. deletedName
+	else
+		waypointStatus.Text = "Deleted this session: " .. deletedName .. " (" .. saveMessage .. ")"
+	end
 end)
 
 connect(keybindButton.MouseButton1Click, function()
@@ -769,7 +939,9 @@ connect(Players.PlayerRemoving, function(leavingPlayer)
 	refreshPlayerDropdown()
 end)
 
+local loadedWaypointsOk, loadedWaypointCount, loadedWaypointMessage = loadWaypointsFromDisk()
 refreshPlayerDropdown()
 refreshWaypointDropdown()
 updateKeybindButton()
 setTab("TP")
+waypointStatus.Text = loadedWaypointMessage
