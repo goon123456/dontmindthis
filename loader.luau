@@ -19,6 +19,8 @@ local waypoints = {}
 local waypointOrder = {}
 
 local running = false
+local waypointRunning = false
+local activeWaypointLoopName = nil
 local unloaded = false
 local rebinding = false
 local menuKey = Enum.KeyCode.RightControl
@@ -601,6 +603,18 @@ local function stopTeleport()
 	startButton.BackgroundColor3 = colors.green
 end
 
+local function stopWaypointTeleport()
+	waypointRunning = false
+	activeWaypointLoopName = nil
+
+	if unloaded then
+		return
+	end
+
+	teleportWaypointButton.Text = "Teleport"
+	teleportWaypointButton.BackgroundColor3 = colors.accent
+end
+
 local function unloadMenu()
 	if unloaded then
 		return
@@ -608,6 +622,7 @@ local function unloadMenu()
 
 	unloaded = true
 	running = false
+	waypointRunning = false
 
 	for _, connection in ipairs(connections) do
 		if connection.Connected then
@@ -692,14 +707,14 @@ local function startTeleport()
 		return
 	end
 
+	stopWaypointTeleport()
+
 	running = true
 	startButton.Text = "Stop"
 	startButton.BackgroundColor3 = colors.red
 	tpStatus.Text = "Teleporting..."
 
 	task.spawn(function()
-		local stableTime = 0
-		local lastTeleportPos = nil
 		local endMessage = "Stopped."
 
 		while running and not unloaded do
@@ -718,28 +733,7 @@ local function startTeleport()
 				continue
 			end
 
-			if lastTeleportPos then
-				local myRootPos = myRoot.Position
-
-				local teleportCheck =
-					math.abs(myRootPos.X - lastTeleportPos.X) >= 100 or
-					math.abs(myRootPos.Y - lastTeleportPos.Y) >= 100 or
-					math.abs(myRootPos.Z - lastTeleportPos.Z) >= 100
-
-				if teleportCheck then
-					stableTime = 0
-				else
-					stableTime += 0.09
-
-					if stableTime >= 1.0 then
-						endMessage = "Teleport finished."
-						break
-					end
-				end
-			end
-
 			myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, behindOffset)
-			lastTeleportPos = myRoot.Position
 
 			task.wait(0.09)
 		end
@@ -748,6 +742,54 @@ local function startTeleport()
 
 		if not unloaded then
 			tpStatus.Text = endMessage
+		end
+	end)
+end
+
+local function startWaypointTeleport()
+	if waypointRunning then
+		return
+	end
+
+	if not selectedWaypointName or not waypoints[selectedWaypointName] then
+		waypointStatus.Text = "Choose a waypoint first."
+		return
+	end
+
+	stopTeleport()
+
+	activeWaypointLoopName = selectedWaypointName
+	waypointRunning = true
+	teleportWaypointButton.Text = "Stop"
+	teleportWaypointButton.BackgroundColor3 = colors.red
+	waypointStatus.Text = "Loop teleporting to: " .. activeWaypointLoopName
+
+	task.spawn(function()
+		local endMessage = "Stopped."
+
+		while waypointRunning and not unloaded do
+			local waypoint = activeWaypointLoopName and waypoints[activeWaypointLoopName]
+
+			if not waypoint then
+				endMessage = "Waypoint unavailable."
+				break
+			end
+
+			local root = getRoot(player.Character)
+
+			if not root then
+				task.wait(0.1)
+				continue
+			end
+
+			root.CFrame = waypoint.cframe
+			task.wait(0.09)
+		end
+
+		stopWaypointTeleport()
+
+		if not unloaded then
+			waypointStatus.Text = endMessage
 		end
 	end)
 end
@@ -838,20 +880,12 @@ connect(saveWaypointButton.MouseButton1Click, function()
 end)
 
 connect(teleportWaypointButton.MouseButton1Click, function()
-	if not selectedWaypointName or not waypoints[selectedWaypointName] then
-		waypointStatus.Text = "Choose a waypoint first."
-		return
+	if waypointRunning then
+		stopWaypointTeleport()
+		waypointStatus.Text = "Stopped."
+	else
+		startWaypointTeleport()
 	end
-
-	local root = getRoot(player.Character)
-
-	if not root then
-		waypointStatus.Text = "Character root not found."
-		return
-	end
-
-	root.CFrame = waypoints[selectedWaypointName].cframe
-	waypointStatus.Text = "Teleported to: " .. selectedWaypointName
 end)
 
 connect(deleteWaypointButton.MouseButton1Click, function()
@@ -861,6 +895,11 @@ connect(deleteWaypointButton.MouseButton1Click, function()
 	end
 
 	local deletedName = selectedWaypointName
+
+	if activeWaypointLoopName == deletedName then
+		stopWaypointTeleport()
+	end
+
 	waypoints[deletedName] = nil
 
 	for index, name in ipairs(waypointOrder) do
