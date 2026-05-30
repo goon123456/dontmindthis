@@ -47,6 +47,24 @@ local vehicleFlyVelocity = nil
 local vehicleFlyGyro = nil
 local espEnabled = false
 local espEntries = {}
+local espToggleKey = nil
+local espKeybindMode = nil
+local espMaxDistance = 3100
+local espNamesEnabled = true
+local espDistanceEnabled = true
+local espHealthEnabled = true
+local espPlayersEnabled = true
+local espPlayersKey = nil
+local espZombiesEnabled = false
+local espZombiesKey = nil
+local espBossOnlyEnabled = false
+local espVehiclesEnabled = true
+local espVehiclesKey = nil
+local espCorpsesEnabled = true
+local espCorpsesKey = nil
+local worldEspEntries = {}
+local worldEspTargets = {}
+local worldEspScanTimer = 0
 local chamsEnabled = false
 local chamsEntries = {}
 local unloaded = false
@@ -229,9 +247,11 @@ local colors = {
 	panel = Color3.fromRGB(9, 20, 38),
 	sidebar = Color3.fromRGB(13, 28, 54),
 	content = Color3.fromRGB(15, 37, 74),
+	card = Color3.fromRGB(12, 27, 52),
 	button = Color3.fromRGB(37, 87, 165),
 	buttonDark = Color3.fromRGB(23, 58, 112),
 	accent = Color3.fromRGB(75, 112, 255),
+	orange = Color3.fromRGB(210, 104, 76),
 	text = Color3.fromRGB(245, 248, 255),
 	muted = Color3.fromRGB(170, 187, 215),
 	green = Color3.fromRGB(50, 160, 105),
@@ -268,8 +288,8 @@ waypointSpotFolder.Name = "TeleportWaypointSpots"
 waypointSpotFolder.Parent = workspace
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 600, 0, 400)
-mainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
+mainFrame.Size = UDim2.new(0, 720, 0, 520)
+mainFrame.Position = UDim2.new(0.5, -360, 0.5, -260)
 mainFrame.BackgroundColor3 = colors.panel
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
@@ -404,6 +424,174 @@ local function createTextBox(parent, text, placeholder, position, size)
 	addStroke(box, Color3.fromRGB(120, 155, 230), 1, 0.75)
 	markControl(box)
 	return box
+end
+
+local function createSettingCard(parent, title, position, size)
+	local card = Instance.new("Frame")
+	card.Size = size
+	card.Position = position
+	card.BackgroundColor3 = colors.card
+	card.BorderSizePixel = 0
+	card.Parent = parent
+	addCorner(card, 10)
+	addStroke(card, Color3.fromRGB(72, 101, 160), 1, 0.72)
+	addDragArea(card)
+
+	local dot = Instance.new("Frame")
+	dot.Size = UDim2.new(0, 12, 0, 12)
+	dot.Position = UDim2.new(0, 12, 0, 12)
+	dot.BackgroundColor3 = colors.orange
+	dot.BorderSizePixel = 0
+	dot.Parent = card
+	addCorner(dot, 6)
+	addDragArea(dot)
+
+	local titleLabel = createLabel(card, title, UDim2.new(0, 32, 0, 4), UDim2.new(1, -44, 0, 28), 14, colors.text)
+	titleLabel.Font = Enum.Font.GothamBold
+
+	local divider = Instance.new("Frame")
+	divider.Size = UDim2.new(1, -24, 0, 1)
+	divider.Position = UDim2.new(0, 12, 0, 34)
+	divider.BackgroundColor3 = Color3.fromRGB(52, 72, 108)
+	divider.BackgroundTransparency = 0.35
+	divider.BorderSizePixel = 0
+	divider.Parent = card
+	addDragArea(divider)
+
+	return card
+end
+
+local function keyName(keyCode)
+	return keyCode and keyCode.Name or "NONE"
+end
+
+local function setToggleVisual(button, enabled)
+	button.Text = enabled and "ON" or "OFF"
+	button.BackgroundColor3 = enabled and colors.orange or Color3.fromRGB(45, 54, 70)
+end
+
+local function createToggleRow(parent, labelText, y, enabled, x, width)
+	local rowX = x or 14
+	local rowWidth = width
+	local buttonPosition = rowWidth and UDim2.new(0, rowX + rowWidth - 46, 0, y) or UDim2.new(1, -60, 0, y)
+	local labelSize = rowWidth and UDim2.new(0, rowWidth - 56, 0, 22) or UDim2.new(1, -78, 0, 22)
+	local label = createLabel(parent, labelText, UDim2.new(0, rowX, 0, y), labelSize, 12, colors.text)
+	label.Font = Enum.Font.Gotham
+
+	local button = Instance.new("TextButton")
+	button.Size = UDim2.new(0, 46, 0, 22)
+	button.Position = buttonPosition
+	button.BorderSizePixel = 0
+	button.TextColor3 = colors.text
+	button.Font = Enum.Font.GothamBold
+	button.TextSize = 11
+	button.AutoButtonColor = true
+	button.Parent = parent
+	addCorner(button, 11)
+	markControl(button)
+	setToggleVisual(button, enabled)
+
+	return button
+end
+
+local function createKeyRow(parent, labelText, y, x, width)
+	local rowX = x or 14
+	local rowWidth = width
+	local buttonPosition = rowWidth and UDim2.new(0, rowX + rowWidth - 70, 0, y) or UDim2.new(1, -84, 0, y)
+	local labelSize = rowWidth and UDim2.new(0, rowWidth - 78, 0, 22) or UDim2.new(1, -112, 0, 22)
+	local label = createLabel(parent, labelText, UDim2.new(0, rowX, 0, y), labelSize, 12, colors.text)
+	label.Font = Enum.Font.GothamBold
+
+	local button = createButton(parent, "NONE", buttonPosition, UDim2.new(0, 70, 0, 22), colors.buttonDark)
+	button.TextSize = 11
+	return button
+end
+
+local function createDistanceSlider(parent, y)
+	local minDistance = 100
+	local maxDistance = 5000
+
+	local label = createLabel(parent, "Max Distance", UDim2.new(0, 14, 0, y), UDim2.new(0, 120, 0, 22), 13, colors.text)
+	label.Font = Enum.Font.GothamBold
+
+	local valueLabel = createLabel(parent, tostring(espMaxDistance) .. " studs", UDim2.new(1, -118, 0, y), UDim2.new(0, 104, 0, 22), 12, colors.muted)
+	valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+	valueLabel.Font = Enum.Font.Gotham
+
+	local track = Instance.new("Frame")
+	track.Size = UDim2.new(1, -28, 0, 4)
+	track.Position = UDim2.new(0, 14, 0, y + 28)
+	track.BackgroundColor3 = Color3.fromRGB(50, 59, 78)
+	track.BorderSizePixel = 0
+	track.Parent = parent
+	addCorner(track, 2)
+	markControl(track)
+
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.new(0, 0, 1, 0)
+	fill.BackgroundColor3 = colors.orange
+	fill.BorderSizePixel = 0
+	fill.Parent = track
+	addCorner(fill, 2)
+
+	local knob = Instance.new("TextButton")
+	knob.Size = UDim2.new(0, 12, 0, 12)
+	knob.BackgroundColor3 = colors.text
+	knob.BorderSizePixel = 0
+	knob.Text = ""
+	knob.AutoButtonColor = false
+	knob.Parent = track
+	addCorner(knob, 6)
+	markControl(knob)
+
+	local draggingSlider = false
+
+	local function updateVisual()
+		local alpha = math.clamp((espMaxDistance - minDistance) / (maxDistance - minDistance), 0, 1)
+		fill.Size = UDim2.new(alpha, 0, 1, 0)
+		knob.Position = UDim2.new(alpha, -6, 0.5, -6)
+		valueLabel.Text = tostring(espMaxDistance) .. " studs"
+	end
+
+	local function setFromX(x)
+		local width = math.max(track.AbsoluteSize.X, 1)
+		local alpha = math.clamp((x - track.AbsolutePosition.X) / width, 0, 1)
+		local rawDistance = minDistance + ((maxDistance - minDistance) * alpha)
+		espMaxDistance = math.floor((rawDistance / 50) + 0.5) * 50
+		updateVisual()
+	end
+
+	connect(track.InputBegan, function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingSlider = true
+			setFromX(input.Position.X)
+		end
+	end)
+
+	connect(knob.InputBegan, function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingSlider = true
+		end
+	end)
+
+	connect(UserInputService.InputChanged, function(input)
+		if not draggingSlider then
+			return
+		end
+
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			setFromX(input.Position.X)
+		end
+	end)
+
+	connect(UserInputService.InputEnded, function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingSlider = false
+		end
+	end)
+
+	updateVisual()
+	return updateVisual
 end
 
 local sideTitle = createLabel(sidebar, "Teleport", UDim2.new(0, 18, 0, 18), UDim2.new(1, -30, 0, 30), 19)
@@ -589,20 +777,37 @@ local deleteWaypointButton = createButton(waypointPage, "Delete", UDim2.new(0, 1
 local waypointStatus = createLabel(waypointPage, "No waypoints saved.", UDim2.new(0, 26, 0, 274), UDim2.new(0, 360, 0, 26), 12, colors.muted)
 waypointStatus.Font = Enum.Font.Gotham
 
-createLabel(playerPage, "Noclip", UDim2.new(0, 26, 0, 18), UDim2.new(0, 230, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
-local noclipButton = createButton(playerPage, "Noclip: Off", UDim2.new(0, 26, 0, 48), UDim2.new(0, 154, 0, 42), colors.buttonDark)
-local noclipKeybindButton = createButton(playerPage, "Key: N", UDim2.new(0, 194, 0, 48), UDim2.new(0, 154, 0, 42), colors.buttonDark)
+local movementCard = createSettingCard(playerPage, "Movement", UDim2.new(0, 18, 0, 8), UDim2.new(0, 530, 0, 84))
+local noclipButton = createButton(movementCard, "Noclip: Off", UDim2.new(0, 14, 0, 42), UDim2.new(0, 130, 0, 30), colors.buttonDark)
+local noclipKeybindButton = createButton(movementCard, "Key: N", UDim2.new(0, 154, 0, 42), UDim2.new(0, 96, 0, 30), colors.buttonDark)
+local vehicleFlyButton = createButton(movementCard, "Car Fly: Off", UDim2.new(0, 262, 0, 42), UDim2.new(0, 122, 0, 30), colors.buttonDark)
+local vehicleFlyKeybindButton = createButton(movementCard, "Key: V", UDim2.new(0, 394, 0, 42), UDim2.new(0, 70, 0, 30), colors.buttonDark)
+local vehicleFlySpeedBox = createTextBox(movementCard, tostring(vehicleFlySpeed), "Speed", UDim2.new(0, 474, 0, 42), UDim2.new(0, 42, 0, 30))
+vehicleFlySpeedBox.TextSize = 12
 
-createLabel(playerPage, "Vehicle fly", UDim2.new(0, 26, 0, 98), UDim2.new(0, 230, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
-createLabel(playerPage, "Speed", UDim2.new(0, 324, 0, 98), UDim2.new(0, 72, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
-local vehicleFlyButton = createButton(playerPage, "Car Fly: Off", UDim2.new(0, 26, 0, 128), UDim2.new(0, 154, 0, 42), colors.buttonDark)
-local vehicleFlyKeybindButton = createButton(playerPage, "Key: V", UDim2.new(0, 194, 0, 128), UDim2.new(0, 116, 0, 42), colors.buttonDark)
-local vehicleFlySpeedBox = createTextBox(playerPage, tostring(vehicleFlySpeed), "Speed", UDim2.new(0, 324, 0, 128), UDim2.new(0, 72, 0, 42))
+local espGeneralCard = createSettingCard(playerPage, "General", UDim2.new(0, 18, 0, 106), UDim2.new(0, 260, 0, 132))
+local espButton = createToggleRow(espGeneralCard, "Enable ESP", 44, espEnabled)
+local espToggleKeyButton = createKeyRow(espGeneralCard, "ESP Toggle Key", 70)
+local updateEspDistanceSlider = createDistanceSlider(espGeneralCard, 96)
 
-createLabel(playerPage, "ESP", UDim2.new(0, 26, 0, 194), UDim2.new(0, 230, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
-local espButton = createButton(playerPage, "ESP: Off", UDim2.new(0, 26, 0, 224), UDim2.new(0, 154, 0, 42), colors.buttonDark)
-local chamsButton = createButton(playerPage, "Chams: Off", UDim2.new(0, 194, 0, 224), UDim2.new(0, 154, 0, 42), colors.buttonDark)
-local playerStatus = createLabel(playerPage, "Noclip: N. Car fly: V. ESP has text, health, and chams.", UDim2.new(0, 26, 0, 282), UDim2.new(0, 400, 0, 34), 12, colors.muted)
+local espDisplayCard = createSettingCard(playerPage, "Display", UDim2.new(0, 294, 0, 106), UDim2.new(0, 254, 0, 132))
+local chamsButton = createToggleRow(espDisplayCard, "Chams", 42, chamsEnabled)
+local espNamesButton = createToggleRow(espDisplayCard, "Names", 66, espNamesEnabled)
+local espDistanceButton = createToggleRow(espDisplayCard, "Distance", 90, espDistanceEnabled)
+local espHealthButton = createToggleRow(espDisplayCard, "Health", 114, espHealthEnabled)
+
+local espCategoryCard = createSettingCard(playerPage, "Category Toggles", UDim2.new(0, 18, 0, 252), UDim2.new(0, 530, 0, 158))
+local espPlayersButton = createToggleRow(espCategoryCard, "Players", 40, espPlayersEnabled, 14, 228)
+local espPlayersKeyButton = createKeyRow(espCategoryCard, "Players Toggle Key", 66, 14, 228)
+local espZombiesButton = createToggleRow(espCategoryCard, "Zombies", 92, espZombiesEnabled, 14, 228)
+local espZombiesKeyButton = createKeyRow(espCategoryCard, "Zombies Toggle Key", 118, 14, 228)
+local espBossOnlyButton = createToggleRow(espCategoryCard, "Boss Only", 132, espBossOnlyEnabled, 14, 228)
+local espVehiclesButton = createToggleRow(espCategoryCard, "Vehicles", 40, espVehiclesEnabled, 274, 228)
+local espVehiclesKeyButton = createKeyRow(espCategoryCard, "Vehicles Toggle Key", 66, 274, 228)
+local espCorpsesButton = createToggleRow(espCategoryCard, "Corpses", 92, espCorpsesEnabled, 274, 228)
+local espCorpsesKeyButton = createKeyRow(espCategoryCard, "Corpses Toggle Key", 118, 274, 228)
+
+local playerStatus = createLabel(playerPage, "ESP is subtle: small scaling text, side health, and optional chams.", UDim2.new(0, 18, 0, 418), UDim2.new(0, 530, 0, 26), 12, colors.muted)
 playerStatus.Font = Enum.Font.Gotham
 
 createLabel(settingsPage, "Menu keybind", UDim2.new(0, 26, 0, 18), UDim2.new(0, 250, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
@@ -1008,6 +1213,9 @@ local function updateVehicleFly()
 	end
 end
 
+local clearWorldEsp
+local clearChams
+
 local function clearEspEntry(targetPlayer)
 	local entry = espEntries[targetPlayer]
 	if not entry then
@@ -1143,20 +1351,312 @@ end
 
 local function setEspEntryEnabled(entry, enabled)
 	if entry.nameBillboard then
-		entry.nameBillboard.Enabled = enabled
+		entry.nameBillboard.Enabled = enabled and espNamesEnabled
 	end
 
 	if entry.distanceBillboard then
-		entry.distanceBillboard.Enabled = enabled
+		entry.distanceBillboard.Enabled = enabled and espDistanceEnabled
 	end
 
 	if entry.healthBillboard then
-		entry.healthBillboard.Enabled = enabled
+		entry.healthBillboard.Enabled = enabled and espHealthEnabled
 	end
 end
 
-local function updateEsp()
+local function getModelRoot(model)
+	if not model then
+		return nil
+	end
+
+	if model:IsA("BasePart") then
+		return model
+	end
+
+	if model:IsA("Model") then
+		return model:FindFirstChild("HumanoidRootPart")
+			or model.PrimaryPart
+			or model:FindFirstChildWhichIsA("BasePart", true)
+	end
+
+	return nil
+end
+
+local function getWorldDisplayName(instance, category)
+	local name = instance and instance.Name or category
+
+	if name == "" then
+		return category
+	end
+
+	return name
+end
+
+local function addWorldTarget(targets, counts, category, instance, root, humanoid, highlightObject)
+	if not instance or not root or targets[instance] then
+		return
+	end
+
+	if counts[category] and counts[category] >= 45 then
+		return
+	end
+
+	counts[category] = (counts[category] or 0) + 1
+	targets[instance] = {
+		category = category,
+		root = root,
+		humanoid = humanoid,
+		displayName = getWorldDisplayName(instance, category),
+		highlightObject = highlightObject or instance,
+	}
+end
+
+local function refreshWorldEspTargets()
+	local targets = {}
+	local counts = {
+		Zombies = 0,
+		Vehicles = 0,
+		Corpses = 0,
+	}
+
+	if not espZombiesEnabled and not espVehiclesEnabled and not espCorpsesEnabled then
+		worldEspTargets = targets
+		return
+	end
+
+	for _, descendant in ipairs(workspace:GetDescendants()) do
+		if descendant:IsA("Humanoid") then
+			local model = descendant.Parent
+
+			if model and model:IsA("Model") and not Players:GetPlayerFromCharacter(model) then
+				local root = getModelRoot(model)
+				local lowerName = string.lower(model.Name)
+				local looksLikeCorpse = descendant.Health <= 0
+					or string.find(lowerName, "corpse", 1, true) ~= nil
+					or string.find(lowerName, "dead", 1, true) ~= nil
+					or string.find(lowerName, "ragdoll", 1, true) ~= nil
+				local looksLikeBoss = string.find(lowerName, "boss", 1, true) ~= nil
+					or string.find(lowerName, "brute", 1, true) ~= nil
+					or descendant.MaxHealth >= 300
+
+				if espCorpsesEnabled and looksLikeCorpse then
+					addWorldTarget(targets, counts, "Corpses", model, root, descendant, model)
+				elseif espZombiesEnabled and descendant.Health > 0 and (not espBossOnlyEnabled or looksLikeBoss) then
+					addWorldTarget(targets, counts, "Zombies", model, root, descendant, model)
+				end
+			end
+		elseif espVehiclesEnabled and descendant:IsA("VehicleSeat") then
+			local model = descendant:FindFirstAncestorOfClass("Model")
+			local instance = model or descendant
+			addWorldTarget(targets, counts, "Vehicles", instance, descendant, nil, instance)
+		end
+	end
+
+	worldEspTargets = targets
+end
+
+local function clearWorldEspEntry(instance)
+	local entry = worldEspEntries[instance]
+	if not entry then
+		return
+	end
+
+	if entry.nameBillboard then
+		entry.nameBillboard:Destroy()
+	end
+
+	if entry.distanceBillboard then
+		entry.distanceBillboard:Destroy()
+	end
+
+	if entry.healthBillboard then
+		entry.healthBillboard:Destroy()
+	end
+
+	if entry.highlight then
+		entry.highlight:Destroy()
+	end
+
+	worldEspEntries[instance] = nil
+end
+
+local function createWorldEspEntry(instance)
+	if worldEspEntries[instance] then
+		return
+	end
+
+	local nameBillboard = Instance.new("BillboardGui")
+	nameBillboard.Name = "ESP_World_Name"
+	nameBillboard.AlwaysOnTop = true
+	nameBillboard.Enabled = false
+	nameBillboard.MaxDistance = 10000
+	nameBillboard.Size = UDim2.new(0, 90, 0, 16)
+	nameBillboard.StudsOffset = Vector3.new(0, 2.7, 0)
+	nameBillboard.Parent = espFolder
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Size = UDim2.new(1, 0, 1, 0)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.TextColor3 = colors.text
+	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.TextSize = 9
+	nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	nameLabel.TextStrokeTransparency = 0.35
+	nameLabel.Parent = nameBillboard
+
+	local distanceBillboard = Instance.new("BillboardGui")
+	distanceBillboard.Name = "ESP_World_Distance"
+	distanceBillboard.AlwaysOnTop = true
+	distanceBillboard.Enabled = false
+	distanceBillboard.MaxDistance = 10000
+	distanceBillboard.Size = UDim2.new(0, 80, 0, 14)
+	distanceBillboard.StudsOffset = Vector3.new(0, -2.45, 0)
+	distanceBillboard.Parent = espFolder
+
+	local distanceLabel = Instance.new("TextLabel")
+	distanceLabel.Size = UDim2.new(1, 0, 1, 0)
+	distanceLabel.BackgroundTransparency = 1
+	distanceLabel.TextColor3 = colors.muted
+	distanceLabel.Font = Enum.Font.GothamBold
+	distanceLabel.TextSize = 8
+	distanceLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	distanceLabel.TextStrokeTransparency = 0.35
+	distanceLabel.Parent = distanceBillboard
+
+	local healthBillboard = Instance.new("BillboardGui")
+	healthBillboard.Name = "ESP_World_Health"
+	healthBillboard.AlwaysOnTop = true
+	healthBillboard.Enabled = false
+	healthBillboard.MaxDistance = 10000
+	healthBillboard.Size = UDim2.new(0, 3, 0, 28)
+	healthBillboard.StudsOffset = Vector3.new(1.15, 0.1, 0)
+	healthBillboard.Parent = espFolder
+
+	local healthBack = Instance.new("Frame")
+	healthBack.Size = UDim2.new(1, 0, 1, 0)
+	healthBack.BackgroundColor3 = Color3.fromRGB(18, 28, 45)
+	healthBack.BackgroundTransparency = 0.5
+	healthBack.BorderSizePixel = 0
+	healthBack.Parent = healthBillboard
+	addCorner(healthBack, 2)
+
+	local healthFill = Instance.new("Frame")
+	healthFill.AnchorPoint = Vector2.new(0, 1)
+	healthFill.Position = UDim2.new(0, 0, 1, 0)
+	healthFill.Size = UDim2.new(1, 0, 1, 0)
+	healthFill.BackgroundColor3 = colors.green
+	healthFill.BorderSizePixel = 0
+	healthFill.Parent = healthBack
+	addCorner(healthFill, 2)
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "ESP_World_Chams"
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.FillColor = colors.orange
+	highlight.OutlineColor = colors.text
+	highlight.FillTransparency = 0.9
+	highlight.OutlineTransparency = 0.46
+	highlight.Enabled = false
+	highlight.Parent = espFolder
+
+	worldEspEntries[instance] = {
+		nameBillboard = nameBillboard,
+		distanceBillboard = distanceBillboard,
+		healthBillboard = healthBillboard,
+		nameLabel = nameLabel,
+		distanceLabel = distanceLabel,
+		healthFill = healthFill,
+		highlight = highlight,
+	}
+end
+
+local function setWorldEspEntryEnabled(entry, enabled, hasHealth)
+	entry.nameBillboard.Enabled = enabled and espNamesEnabled
+	entry.distanceBillboard.Enabled = enabled and espDistanceEnabled
+	entry.healthBillboard.Enabled = enabled and espHealthEnabled and hasHealth
+	entry.highlight.Enabled = enabled and espEnabled and chamsEnabled
+end
+
+local function updateWorldEsp(deltaTime)
 	if not espEnabled then
+		return
+	end
+
+	worldEspScanTimer += (deltaTime or 0)
+
+	if worldEspScanTimer >= 0.75 then
+		worldEspScanTimer = 0
+		refreshWorldEspTargets()
+	end
+
+	local myRoot = getRoot(player.Character)
+	if not myRoot then
+		for _, entry in pairs(worldEspEntries) do
+			setWorldEspEntryEnabled(entry, false, false)
+		end
+		return
+	end
+
+	for instance, entry in pairs(worldEspEntries) do
+		if not worldEspTargets[instance] or not instance.Parent then
+			clearWorldEspEntry(instance)
+		end
+	end
+
+	for instance, target in pairs(worldEspTargets) do
+		if not instance.Parent or not target.root or not target.root.Parent then
+			clearWorldEspEntry(instance)
+			continue
+		end
+
+		if not worldEspEntries[instance] then
+			createWorldEspEntry(instance)
+		end
+
+		local entry = worldEspEntries[instance]
+		local distance = math.floor((myRoot.Position - target.root.Position).Magnitude)
+
+		if distance > espMaxDistance then
+			setWorldEspEntryEnabled(entry, false, target.humanoid ~= nil)
+			continue
+		end
+
+		local textSize = getEspTextSize(distance)
+		entry.nameBillboard.Adornee = target.root
+		entry.distanceBillboard.Adornee = target.root
+		entry.healthBillboard.Adornee = target.root
+		entry.highlight.Adornee = target.highlightObject
+		entry.nameLabel.Text = target.displayName
+		entry.distanceLabel.Text = tostring(distance) .. " studs"
+		entry.nameLabel.TextSize = textSize
+		entry.distanceLabel.TextSize = math.max(7, textSize - 1)
+		entry.nameBillboard.Size = UDim2.new(0, textSize * 11, 0, textSize + 6)
+		entry.distanceBillboard.Size = UDim2.new(0, textSize * 9, 0, textSize + 5)
+
+		if target.humanoid then
+			local healthPercent = math.clamp(target.humanoid.Health / math.max(target.humanoid.MaxHealth, 1), 0, 1)
+			entry.healthFill.Size = UDim2.new(1, 0, healthPercent, 0)
+
+			if healthPercent > 0.5 then
+				entry.healthFill.BackgroundColor3 = colors.green
+			elseif healthPercent > 0.25 then
+				entry.healthFill.BackgroundColor3 = Color3.fromRGB(235, 185, 70)
+			else
+				entry.healthFill.BackgroundColor3 = colors.red
+			end
+		end
+
+		setWorldEspEntryEnabled(entry, true, target.humanoid ~= nil)
+	end
+end
+
+local function updateEsp(deltaTime)
+	if not espEnabled then
+		return
+	end
+
+	if not espPlayersEnabled then
+		clearEsp()
+		updateWorldEsp(deltaTime)
 		return
 	end
 
@@ -1185,6 +1685,11 @@ local function updateEsp()
 			local healthPercent = math.clamp(humanoid.Health / maxHealth, 0, 1)
 			local textSize = getEspTextSize(distance)
 
+			if distance > espMaxDistance then
+				setEspEntryEnabled(entry, false)
+				continue
+			end
+
 			entry.nameBillboard.Adornee = head or root
 			entry.distanceBillboard.Adornee = root
 			entry.healthBillboard.Adornee = root
@@ -1208,22 +1713,28 @@ local function updateEsp()
 			setEspEntryEnabled(entry, false)
 		end
 	end
+
+	updateWorldEsp(deltaTime)
 end
 
 local function setEspEnabled(enabled)
 	espEnabled = enabled
 
-	espButton.Text = enabled and "ESP: On" or "ESP: Off"
-	espButton.BackgroundColor3 = enabled and colors.green or colors.buttonDark
+	setToggleVisual(espButton, enabled)
 
 	if enabled then
 		for _, targetPlayer in ipairs(Players:GetPlayers()) do
 			createEspEntry(targetPlayer)
 		end
 
+		worldEspScanTimer = 1
 		playerStatus.Text = "ESP enabled."
 	else
 		clearEsp()
+		clearChams()
+		if clearWorldEsp then
+			clearWorldEsp()
+		end
 		playerStatus.Text = "ESP disabled."
 	end
 end
@@ -1237,7 +1748,7 @@ local function clearChamsEntry(targetPlayer)
 	chamsEntries[targetPlayer] = nil
 end
 
-local function clearChams()
+clearChams = function()
 	for _, highlight in pairs(chamsEntries) do
 		if highlight then
 			highlight:Destroy()
@@ -1266,7 +1777,7 @@ local function createChamsEntry(targetPlayer)
 end
 
 local function updateChams()
-	if not chamsEnabled then
+	if not espEnabled or not chamsEnabled or not espPlayersEnabled then
 		return
 	end
 
@@ -1283,21 +1794,27 @@ local function updateChams()
 		end
 
 		local character = targetPlayer.Character
+		local myRoot = getRoot(player.Character)
+		local root = getRoot(character)
 		highlight.Adornee = character
-		highlight.Enabled = character ~= nil
+		highlight.Enabled = character ~= nil and myRoot ~= nil and root ~= nil and (myRoot.Position - root.Position).Magnitude <= espMaxDistance
 	end
 end
 
 local function setChamsEnabled(enabled)
 	chamsEnabled = enabled
-	chamsButton.Text = enabled and "Chams: On" or "Chams: Off"
-	chamsButton.BackgroundColor3 = enabled and colors.green or colors.buttonDark
+	setToggleVisual(chamsButton, enabled)
 
 	if enabled then
 		updateChams()
 		playerStatus.Text = "Chams enabled."
 	else
 		clearChams()
+		for _, entry in pairs(worldEspEntries) do
+			if entry.highlight then
+				entry.highlight.Enabled = false
+			end
+		end
 		playerStatus.Text = "Chams disabled."
 	end
 end
@@ -1514,6 +2031,94 @@ local function toggleMenu()
 	mainFrame.Visible = not mainFrame.Visible
 end
 
+local function updateEspKeybindButtons()
+	espToggleKeyButton.Text = espKeybindMode == "ESP" and "..." or keyName(espToggleKey)
+	espPlayersKeyButton.Text = espKeybindMode == "Players" and "..." or keyName(espPlayersKey)
+	espZombiesKeyButton.Text = espKeybindMode == "Zombies" and "..." or keyName(espZombiesKey)
+	espVehiclesKeyButton.Text = espKeybindMode == "Vehicles" and "..." or keyName(espVehiclesKey)
+	espCorpsesKeyButton.Text = espKeybindMode == "Corpses" and "..." or keyName(espCorpsesKey)
+end
+
+local function updateEspToggleButtons()
+	setToggleVisual(espButton, espEnabled)
+	setToggleVisual(chamsButton, chamsEnabled)
+	setToggleVisual(espNamesButton, espNamesEnabled)
+	setToggleVisual(espDistanceButton, espDistanceEnabled)
+	setToggleVisual(espHealthButton, espHealthEnabled)
+	setToggleVisual(espPlayersButton, espPlayersEnabled)
+	setToggleVisual(espZombiesButton, espZombiesEnabled)
+	setToggleVisual(espBossOnlyButton, espBossOnlyEnabled)
+	setToggleVisual(espVehiclesButton, espVehiclesEnabled)
+	setToggleVisual(espCorpsesButton, espCorpsesEnabled)
+end
+
+local function isEspKeyInUse(keyCode, ignoredMode)
+	if not keyCode or keyCode == Enum.KeyCode.Unknown then
+		return false
+	end
+
+	if keyCode == menuKey or keyCode == noclipKey or keyCode == vehicleFlyKey then
+		return true
+	end
+
+	if ignoredMode ~= "ESP" and espToggleKey and keyCode == espToggleKey then
+		return true
+	elseif ignoredMode ~= "Players" and espPlayersKey and keyCode == espPlayersKey then
+		return true
+	elseif ignoredMode ~= "Zombies" and espZombiesKey and keyCode == espZombiesKey then
+		return true
+	elseif ignoredMode ~= "Vehicles" and espVehiclesKey and keyCode == espVehiclesKey then
+		return true
+	elseif ignoredMode ~= "Corpses" and espCorpsesKey and keyCode == espCorpsesKey then
+		return true
+	end
+
+	return false
+end
+
+local function hasEspKey(keyCode)
+	return (espToggleKey and keyCode == espToggleKey)
+		or (espPlayersKey and keyCode == espPlayersKey)
+		or (espZombiesKey and keyCode == espZombiesKey)
+		or (espVehiclesKey and keyCode == espVehiclesKey)
+		or (espCorpsesKey and keyCode == espCorpsesKey)
+end
+
+local function beginEspKeybind(mode)
+	rebinding = false
+	noclipRebinding = false
+	vehicleFlyRebinding = false
+	espKeybindMode = mode
+	updateKeybindButton()
+	updateNoclipKeybindButton()
+	updateVehicleFlyKeybindButton()
+	updateEspKeybindButtons()
+	playerStatus.Text = "Press a keyboard key. Escape cancels."
+end
+
+clearWorldEsp = function()
+	for _, entry in pairs(worldEspEntries) do
+		if entry.nameBillboard then
+			entry.nameBillboard:Destroy()
+		end
+
+		if entry.distanceBillboard then
+			entry.distanceBillboard:Destroy()
+		end
+
+		if entry.healthBillboard then
+			entry.healthBillboard:Destroy()
+		end
+
+		if entry.highlight then
+			entry.highlight:Destroy()
+		end
+	end
+
+	worldEspEntries = {}
+	worldEspTargets = {}
+end
+
 playerDropdown.OnBeforeOpen = refreshPlayerDropdown
 waypointDropdown.OnBeforeOpen = refreshWaypointDropdown
 
@@ -1641,8 +2246,10 @@ end)
 connect(noclipKeybindButton.MouseButton1Click, function()
 	rebinding = false
 	vehicleFlyRebinding = false
+	espKeybindMode = nil
 	updateKeybindButton()
 	updateVehicleFlyKeybindButton()
+	updateEspKeybindButtons()
 	noclipRebinding = true
 	updateNoclipKeybindButton()
 	playerStatus.Text = "Press a keyboard key. Escape cancels."
@@ -1660,8 +2267,10 @@ end)
 connect(vehicleFlyKeybindButton.MouseButton1Click, function()
 	rebinding = false
 	noclipRebinding = false
+	espKeybindMode = nil
 	updateKeybindButton()
 	updateNoclipKeybindButton()
+	updateEspKeybindButtons()
 	vehicleFlyRebinding = true
 	updateVehicleFlyKeybindButton()
 	playerStatus.Text = "Press a keyboard key. Escape cancels."
@@ -1684,15 +2293,99 @@ connect(espButton.MouseButton1Click, function()
 	setEspEnabled(not espEnabled)
 end)
 
+connect(espToggleKeyButton.MouseButton1Click, function()
+	beginEspKeybind("ESP")
+end)
+
 connect(chamsButton.MouseButton1Click, function()
 	setChamsEnabled(not chamsEnabled)
+end)
+
+connect(espNamesButton.MouseButton1Click, function()
+	espNamesEnabled = not espNamesEnabled
+	updateEspToggleButtons()
+	playerStatus.Text = "ESP names " .. (espNamesEnabled and "shown." or "hidden.")
+end)
+
+connect(espDistanceButton.MouseButton1Click, function()
+	espDistanceEnabled = not espDistanceEnabled
+	updateEspToggleButtons()
+	playerStatus.Text = "ESP distance " .. (espDistanceEnabled and "shown." or "hidden.")
+end)
+
+connect(espHealthButton.MouseButton1Click, function()
+	espHealthEnabled = not espHealthEnabled
+	updateEspToggleButtons()
+	playerStatus.Text = "ESP health " .. (espHealthEnabled and "shown." or "hidden.")
+end)
+
+connect(espPlayersButton.MouseButton1Click, function()
+	espPlayersEnabled = not espPlayersEnabled
+	updateEspToggleButtons()
+
+	if not espPlayersEnabled then
+		clearEsp()
+		clearChams()
+	elseif espEnabled then
+		for _, targetPlayer in ipairs(Players:GetPlayers()) do
+			createEspEntry(targetPlayer)
+		end
+	end
+
+	playerStatus.Text = "Player ESP " .. (espPlayersEnabled and "enabled." or "disabled.")
+end)
+
+connect(espPlayersKeyButton.MouseButton1Click, function()
+	beginEspKeybind("Players")
+end)
+
+connect(espZombiesButton.MouseButton1Click, function()
+	espZombiesEnabled = not espZombiesEnabled
+	worldEspScanTimer = 1
+	updateEspToggleButtons()
+	playerStatus.Text = "Zombie ESP " .. (espZombiesEnabled and "enabled." or "disabled.")
+end)
+
+connect(espZombiesKeyButton.MouseButton1Click, function()
+	beginEspKeybind("Zombies")
+end)
+
+connect(espBossOnlyButton.MouseButton1Click, function()
+	espBossOnlyEnabled = not espBossOnlyEnabled
+	worldEspScanTimer = 1
+	updateEspToggleButtons()
+	playerStatus.Text = "Boss-only zombie filter " .. (espBossOnlyEnabled and "enabled." or "disabled.")
+end)
+
+connect(espVehiclesButton.MouseButton1Click, function()
+	espVehiclesEnabled = not espVehiclesEnabled
+	worldEspScanTimer = 1
+	updateEspToggleButtons()
+	playerStatus.Text = "Vehicle ESP " .. (espVehiclesEnabled and "enabled." or "disabled.")
+end)
+
+connect(espVehiclesKeyButton.MouseButton1Click, function()
+	beginEspKeybind("Vehicles")
+end)
+
+connect(espCorpsesButton.MouseButton1Click, function()
+	espCorpsesEnabled = not espCorpsesEnabled
+	worldEspScanTimer = 1
+	updateEspToggleButtons()
+	playerStatus.Text = "Corpse ESP " .. (espCorpsesEnabled and "enabled." or "disabled.")
+end)
+
+connect(espCorpsesKeyButton.MouseButton1Click, function()
+	beginEspKeybind("Corpses")
 end)
 
 connect(keybindButton.MouseButton1Click, function()
 	noclipRebinding = false
 	vehicleFlyRebinding = false
+	espKeybindMode = nil
 	updateNoclipKeybindButton()
 	updateVehicleFlyKeybindButton()
+	updateEspKeybindButtons()
 	rebinding = true
 	updateKeybindButton()
 	settingsStatus.Text = "Press a keyboard key. Escape cancels."
@@ -1718,7 +2411,7 @@ connect(UserInputService.InputBegan, function(input)
 		end
 
 		if input.KeyCode ~= Enum.KeyCode.Unknown then
-			if input.KeyCode == noclipKey or input.KeyCode == vehicleFlyKey then
+			if input.KeyCode == noclipKey or input.KeyCode == vehicleFlyKey or hasEspKey(input.KeyCode) then
 				settingsStatus.Text = "That key is already used in the Player tab."
 				return
 			end
@@ -1740,7 +2433,7 @@ connect(UserInputService.InputBegan, function(input)
 		end
 
 		if input.KeyCode ~= Enum.KeyCode.Unknown then
-			if input.KeyCode == menuKey or input.KeyCode == vehicleFlyKey then
+			if input.KeyCode == menuKey or input.KeyCode == vehicleFlyKey or hasEspKey(input.KeyCode) then
 				playerStatus.Text = "That key is already used."
 				return
 			end
@@ -1762,7 +2455,7 @@ connect(UserInputService.InputBegan, function(input)
 		end
 
 		if input.KeyCode ~= Enum.KeyCode.Unknown then
-			if input.KeyCode == menuKey or input.KeyCode == noclipKey then
+			if input.KeyCode == menuKey or input.KeyCode == noclipKey or hasEspKey(input.KeyCode) then
 				playerStatus.Text = "That key is already used."
 				return
 			end
@@ -1771,6 +2464,40 @@ connect(UserInputService.InputBegan, function(input)
 			vehicleFlyRebinding = false
 			updateVehicleFlyKeybindButton()
 			playerStatus.Text = "Car fly key set to " .. vehicleFlyKey.Name .. "."
+			return
+		end
+	end
+
+	if espKeybindMode then
+		if input.KeyCode == Enum.KeyCode.Escape then
+			espKeybindMode = nil
+			updateEspKeybindButtons()
+			playerStatus.Text = "Rebind cancelled."
+			return
+		end
+
+		if input.KeyCode ~= Enum.KeyCode.Unknown then
+			if isEspKeyInUse(input.KeyCode, espKeybindMode) then
+				playerStatus.Text = "That key is already used."
+				return
+			end
+
+			if espKeybindMode == "ESP" then
+				espToggleKey = input.KeyCode
+			elseif espKeybindMode == "Players" then
+				espPlayersKey = input.KeyCode
+			elseif espKeybindMode == "Zombies" then
+				espZombiesKey = input.KeyCode
+			elseif espKeybindMode == "Vehicles" then
+				espVehiclesKey = input.KeyCode
+			elseif espKeybindMode == "Corpses" then
+				espCorpsesKey = input.KeyCode
+			end
+
+			local reboundMode = espKeybindMode
+			espKeybindMode = nil
+			updateEspKeybindButtons()
+			playerStatus.Text = reboundMode .. " key set to " .. input.KeyCode.Name .. "."
 			return
 		end
 	end
@@ -1796,6 +2523,48 @@ connect(UserInputService.InputBegan, function(input)
 		end
 
 		setVehicleFlyEnabled(not vehicleFlyEnabled)
+		return
+	end
+
+	if espToggleKey and input.KeyCode == espToggleKey then
+		setEspEnabled(not espEnabled)
+		return
+	end
+
+	if espPlayersKey and input.KeyCode == espPlayersKey then
+		espPlayersEnabled = not espPlayersEnabled
+		updateEspToggleButtons()
+
+		if not espPlayersEnabled then
+			clearEsp()
+			clearChams()
+		end
+
+		playerStatus.Text = "Player ESP " .. (espPlayersEnabled and "enabled." or "disabled.")
+		return
+	end
+
+	if espZombiesKey and input.KeyCode == espZombiesKey then
+		espZombiesEnabled = not espZombiesEnabled
+		worldEspScanTimer = 1
+		updateEspToggleButtons()
+		playerStatus.Text = "Zombie ESP " .. (espZombiesEnabled and "enabled." or "disabled.")
+		return
+	end
+
+	if espVehiclesKey and input.KeyCode == espVehiclesKey then
+		espVehiclesEnabled = not espVehiclesEnabled
+		worldEspScanTimer = 1
+		updateEspToggleButtons()
+		playerStatus.Text = "Vehicle ESP " .. (espVehiclesEnabled and "enabled." or "disabled.")
+		return
+	end
+
+	if espCorpsesKey and input.KeyCode == espCorpsesKey then
+		espCorpsesEnabled = not espCorpsesEnabled
+		worldEspScanTimer = 1
+		updateEspToggleButtons()
+		playerStatus.Text = "Corpse ESP " .. (espCorpsesEnabled and "enabled." or "disabled.")
 	end
 end)
 
@@ -1807,11 +2576,11 @@ end)
 connect(Players.PlayerAdded, function(newPlayer)
 	refreshPlayerDropdown()
 
-	if espEnabled then
+	if espEnabled and espPlayersEnabled then
 		createEspEntry(newPlayer)
 	end
 
-	if chamsEnabled then
+	if espEnabled and espPlayersEnabled and chamsEnabled then
 		createChamsEntry(newPlayer)
 	end
 end)
@@ -1835,5 +2604,7 @@ refreshWaypointDropdown()
 updateKeybindButton()
 updateNoclipKeybindButton()
 updateVehicleFlyKeybindButton()
+updateEspToggleButtons()
+updateEspKeybindButtons()
 setTab("TP")
 waypointStatus.Text = loadedWaypointMessage
