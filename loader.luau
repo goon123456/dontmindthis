@@ -47,6 +47,8 @@ local vehicleFlyVelocity = nil
 local vehicleFlyGyro = nil
 local espEnabled = false
 local espEntries = {}
+local chamsEnabled = false
+local chamsEntries = {}
 local unloaded = false
 local rebinding = false
 local menuKey = Enum.KeyCode.RightControl
@@ -599,7 +601,8 @@ local vehicleFlySpeedBox = createTextBox(playerPage, tostring(vehicleFlySpeed), 
 
 createLabel(playerPage, "ESP", UDim2.new(0, 26, 0, 194), UDim2.new(0, 230, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
 local espButton = createButton(playerPage, "ESP: Off", UDim2.new(0, 26, 0, 224), UDim2.new(0, 154, 0, 42), colors.buttonDark)
-local playerStatus = createLabel(playerPage, "Noclip: N. Car fly: V. ESP shows distance and health.", UDim2.new(0, 26, 0, 282), UDim2.new(0, 400, 0, 34), 12, colors.muted)
+local chamsButton = createButton(playerPage, "Chams: Off", UDim2.new(0, 194, 0, 224), UDim2.new(0, 154, 0, 42), colors.buttonDark)
+local playerStatus = createLabel(playerPage, "Noclip: N. Car fly: V. ESP has text, health, and chams.", UDim2.new(0, 26, 0, 282), UDim2.new(0, 400, 0, 34), 12, colors.muted)
 playerStatus.Font = Enum.Font.Gotham
 
 createLabel(settingsPage, "Menu keybind", UDim2.new(0, 26, 0, 18), UDim2.new(0, 250, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
@@ -1052,6 +1055,11 @@ local function clearEsp()
 	espEntries = {}
 end
 
+local function getEspTextSize(distance)
+	local cappedDistance = math.clamp(distance, 0, 220)
+	return math.floor(math.clamp(11 - (cappedDistance / 70), 8, 11) + 0.5)
+end
+
 local function createEspEntry(targetPlayer)
 	if targetPlayer == player or espEntries[targetPlayer] then
 		return
@@ -1062,8 +1070,8 @@ local function createEspEntry(targetPlayer)
 	nameBillboard.AlwaysOnTop = true
 	nameBillboard.Enabled = false
 	nameBillboard.MaxDistance = 10000
-	nameBillboard.Size = UDim2.new(0, 140, 0, 22)
-	nameBillboard.StudsOffset = Vector3.new(0, 3.2, 0)
+	nameBillboard.Size = UDim2.new(0, 90, 0, 16)
+	nameBillboard.StudsOffset = Vector3.new(0, 2.85, 0)
 	nameBillboard.Parent = espFolder
 
 	local nameLabel = Instance.new("TextLabel")
@@ -1072,9 +1080,9 @@ local function createEspEntry(targetPlayer)
 	nameLabel.Text = targetPlayer.Name
 	nameLabel.TextColor3 = colors.text
 	nameLabel.Font = Enum.Font.GothamBold
-	nameLabel.TextSize = 13
+	nameLabel.TextSize = 9
 	nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	nameLabel.TextStrokeTransparency = 0.25
+	nameLabel.TextStrokeTransparency = 0.35
 	nameLabel.Parent = nameBillboard
 
 	local distanceBillboard = Instance.new("BillboardGui")
@@ -1082,8 +1090,8 @@ local function createEspEntry(targetPlayer)
 	distanceBillboard.AlwaysOnTop = true
 	distanceBillboard.Enabled = false
 	distanceBillboard.MaxDistance = 10000
-	distanceBillboard.Size = UDim2.new(0, 120, 0, 20)
-	distanceBillboard.StudsOffset = Vector3.new(0, -3.0, 0)
+	distanceBillboard.Size = UDim2.new(0, 80, 0, 14)
+	distanceBillboard.StudsOffset = Vector3.new(0, -2.65, 0)
 	distanceBillboard.Parent = espFolder
 
 	local distanceLabel = Instance.new("TextLabel")
@@ -1092,9 +1100,9 @@ local function createEspEntry(targetPlayer)
 	distanceLabel.Text = "..."
 	distanceLabel.TextColor3 = colors.muted
 	distanceLabel.Font = Enum.Font.GothamBold
-	distanceLabel.TextSize = 12
+	distanceLabel.TextSize = 8
 	distanceLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	distanceLabel.TextStrokeTransparency = 0.25
+	distanceLabel.TextStrokeTransparency = 0.35
 	distanceLabel.Parent = distanceBillboard
 
 	local healthBillboard = Instance.new("BillboardGui")
@@ -1102,18 +1110,17 @@ local function createEspEntry(targetPlayer)
 	healthBillboard.AlwaysOnTop = true
 	healthBillboard.Enabled = false
 	healthBillboard.MaxDistance = 10000
-	healthBillboard.Size = UDim2.new(0, 8, 0, 58)
-	healthBillboard.StudsOffset = Vector3.new(2.35, 0.2, 0)
+	healthBillboard.Size = UDim2.new(0, 3, 0, 30)
+	healthBillboard.StudsOffset = Vector3.new(1.25, 0.2, 0)
 	healthBillboard.Parent = espFolder
 
 	local healthBack = Instance.new("Frame")
 	healthBack.Size = UDim2.new(1, 0, 1, 0)
 	healthBack.BackgroundColor3 = Color3.fromRGB(18, 28, 45)
-	healthBack.BackgroundTransparency = 0.18
+	healthBack.BackgroundTransparency = 0.5
 	healthBack.BorderSizePixel = 0
 	healthBack.Parent = healthBillboard
-	addCorner(healthBack, 4)
-	addStroke(healthBack, Color3.fromRGB(0, 0, 0), 1, 0.45)
+	addCorner(healthBack, 2)
 
 	local healthFill = Instance.new("Frame")
 	healthFill.AnchorPoint = Vector2.new(0, 1)
@@ -1122,7 +1129,7 @@ local function createEspEntry(targetPlayer)
 	healthFill.BackgroundColor3 = colors.green
 	healthFill.BorderSizePixel = 0
 	healthFill.Parent = healthBack
-	addCorner(healthFill, 4)
+	addCorner(healthFill, 2)
 
 	espEntries[targetPlayer] = {
 		nameBillboard = nameBillboard,
@@ -1176,13 +1183,18 @@ local function updateEsp()
 			local distance = math.floor((myRoot.Position - root.Position).Magnitude)
 			local maxHealth = math.max(humanoid.MaxHealth, 1)
 			local healthPercent = math.clamp(humanoid.Health / maxHealth, 0, 1)
+			local textSize = getEspTextSize(distance)
 
 			entry.nameBillboard.Adornee = head or root
 			entry.distanceBillboard.Adornee = root
 			entry.healthBillboard.Adornee = root
 			setEspEntryEnabled(entry, true)
+			entry.nameBillboard.Size = UDim2.new(0, textSize * 10, 0, textSize + 6)
+			entry.distanceBillboard.Size = UDim2.new(0, textSize * 9, 0, textSize + 5)
 			entry.nameLabel.Text = targetPlayer.Name
 			entry.distanceLabel.Text = tostring(distance) .. " studs"
+			entry.nameLabel.TextSize = textSize
+			entry.distanceLabel.TextSize = math.max(7, textSize - 1)
 			entry.healthFill.Size = UDim2.new(1, 0, healthPercent, 0)
 
 			if healthPercent > 0.5 then
@@ -1216,10 +1228,85 @@ local function setEspEnabled(enabled)
 	end
 end
 
+local function clearChamsEntry(targetPlayer)
+	local highlight = chamsEntries[targetPlayer]
+	if highlight then
+		highlight:Destroy()
+	end
+
+	chamsEntries[targetPlayer] = nil
+end
+
+local function clearChams()
+	for _, highlight in pairs(chamsEntries) do
+		if highlight then
+			highlight:Destroy()
+		end
+	end
+
+	chamsEntries = {}
+end
+
+local function createChamsEntry(targetPlayer)
+	if targetPlayer == player or chamsEntries[targetPlayer] then
+		return
+	end
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "ESP_Chams_" .. targetPlayer.Name
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.FillColor = Color3.fromRGB(75, 112, 255)
+	highlight.OutlineColor = colors.text
+	highlight.FillTransparency = 0.86
+	highlight.OutlineTransparency = 0.32
+	highlight.Enabled = false
+	highlight.Parent = espFolder
+
+	chamsEntries[targetPlayer] = highlight
+end
+
+local function updateChams()
+	if not chamsEnabled then
+		return
+	end
+
+	for _, targetPlayer in ipairs(Players:GetPlayers()) do
+		if targetPlayer ~= player and not chamsEntries[targetPlayer] then
+			createChamsEntry(targetPlayer)
+		end
+	end
+
+	for targetPlayer, highlight in pairs(chamsEntries) do
+		if not targetPlayer.Parent then
+			clearChamsEntry(targetPlayer)
+			continue
+		end
+
+		local character = targetPlayer.Character
+		highlight.Adornee = character
+		highlight.Enabled = character ~= nil
+	end
+end
+
+local function setChamsEnabled(enabled)
+	chamsEnabled = enabled
+	chamsButton.Text = enabled and "Chams: On" or "Chams: Off"
+	chamsButton.BackgroundColor3 = enabled and colors.green or colors.buttonDark
+
+	if enabled then
+		updateChams()
+		playerStatus.Text = "Chams enabled."
+	else
+		clearChams()
+		playerStatus.Text = "Chams disabled."
+	end
+end
+
 connect(RunService.Stepped, applyNoclip)
 connect(RunService.RenderStepped, updateVehicleFly)
 connect(RunService.RenderStepped, updateWaypointSpotDistances)
 connect(RunService.RenderStepped, updateEsp)
+connect(RunService.RenderStepped, updateChams)
 
 local function unloadMenu()
 	if unloaded then
@@ -1232,6 +1319,7 @@ local function unloadMenu()
 	setNoclipEnabled(false)
 	setVehicleFlyEnabled(false)
 	setEspEnabled(false)
+	setChamsEnabled(false)
 	unloaded = true
 
 	for _, connection in ipairs(connections) do
@@ -1596,6 +1684,10 @@ connect(espButton.MouseButton1Click, function()
 	setEspEnabled(not espEnabled)
 end)
 
+connect(chamsButton.MouseButton1Click, function()
+	setChamsEnabled(not chamsEnabled)
+end)
+
 connect(keybindButton.MouseButton1Click, function()
 	noclipRebinding = false
 	vehicleFlyRebinding = false
@@ -1718,6 +1810,10 @@ connect(Players.PlayerAdded, function(newPlayer)
 	if espEnabled then
 		createEspEntry(newPlayer)
 	end
+
+	if chamsEnabled then
+		createChamsEntry(newPlayer)
+	end
 end)
 
 connect(Players.PlayerRemoving, function(leavingPlayer)
@@ -1729,6 +1825,7 @@ connect(Players.PlayerRemoving, function(leavingPlayer)
 	end
 
 	clearEspEntry(leavingPlayer)
+	clearChamsEntry(leavingPlayer)
 	refreshPlayerDropdown()
 end)
 
