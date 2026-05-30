@@ -1015,6 +1015,18 @@ local function clearEspEntry(targetPlayer)
 		entry.billboard:Destroy()
 	end
 
+	if entry.nameBillboard then
+		entry.nameBillboard:Destroy()
+	end
+
+	if entry.distanceBillboard then
+		entry.distanceBillboard:Destroy()
+	end
+
+	if entry.healthBillboard then
+		entry.healthBillboard:Destroy()
+	end
+
 	espEntries[targetPlayer] = nil
 end
 
@@ -1022,6 +1034,18 @@ local function clearEsp()
 	for _, entry in pairs(espEntries) do
 		if entry.billboard then
 			entry.billboard:Destroy()
+		end
+
+		if entry.nameBillboard then
+			entry.nameBillboard:Destroy()
+		end
+
+		if entry.distanceBillboard then
+			entry.distanceBillboard:Destroy()
+		end
+
+		if entry.healthBillboard then
+			entry.healthBillboard:Destroy()
 		end
 	end
 
@@ -1033,67 +1057,95 @@ local function createEspEntry(targetPlayer)
 		return
 	end
 
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "ESP_" .. targetPlayer.Name
-	billboard.AlwaysOnTop = true
-	billboard.Enabled = false
-	billboard.MaxDistance = 10000
-	billboard.Size = UDim2.new(0, 150, 0, 58)
-	billboard.StudsOffset = Vector3.new(0, 3.4, 0)
-	billboard.Parent = espFolder
-
-	local container = Instance.new("Frame")
-	container.Size = UDim2.new(1, 0, 1, 0)
-	container.BackgroundColor3 = Color3.fromRGB(4, 12, 24)
-	container.BackgroundTransparency = 0.18
-	container.BorderSizePixel = 0
-	container.Parent = billboard
-	addCorner(container, 8)
-	addStroke(container, colors.stroke, 1, 0.4)
+	local nameBillboard = Instance.new("BillboardGui")
+	nameBillboard.Name = "ESP_Name_" .. targetPlayer.Name
+	nameBillboard.AlwaysOnTop = true
+	nameBillboard.Enabled = false
+	nameBillboard.MaxDistance = 10000
+	nameBillboard.Size = UDim2.new(0, 140, 0, 22)
+	nameBillboard.StudsOffset = Vector3.new(0, 3.2, 0)
+	nameBillboard.Parent = espFolder
 
 	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Size = UDim2.new(1, -10, 0, 20)
-	nameLabel.Position = UDim2.new(0, 5, 0, 3)
+	nameLabel.Size = UDim2.new(1, 0, 1, 0)
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Text = targetPlayer.Name
 	nameLabel.TextColor3 = colors.text
 	nameLabel.Font = Enum.Font.GothamBold
-	nameLabel.TextSize = 12
-	nameLabel.TextStrokeTransparency = 0.55
-	nameLabel.Parent = container
+	nameLabel.TextSize = 13
+	nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	nameLabel.TextStrokeTransparency = 0.25
+	nameLabel.Parent = nameBillboard
+
+	local distanceBillboard = Instance.new("BillboardGui")
+	distanceBillboard.Name = "ESP_Distance_" .. targetPlayer.Name
+	distanceBillboard.AlwaysOnTop = true
+	distanceBillboard.Enabled = false
+	distanceBillboard.MaxDistance = 10000
+	distanceBillboard.Size = UDim2.new(0, 120, 0, 20)
+	distanceBillboard.StudsOffset = Vector3.new(0, -3.0, 0)
+	distanceBillboard.Parent = espFolder
 
 	local distanceLabel = Instance.new("TextLabel")
-	distanceLabel.Size = UDim2.new(1, -10, 0, 16)
-	distanceLabel.Position = UDim2.new(0, 5, 0, 22)
+	distanceLabel.Size = UDim2.new(1, 0, 1, 0)
 	distanceLabel.BackgroundTransparency = 1
 	distanceLabel.Text = "..."
 	distanceLabel.TextColor3 = colors.muted
-	distanceLabel.Font = Enum.Font.Gotham
-	distanceLabel.TextSize = 11
-	distanceLabel.TextStrokeTransparency = 0.65
-	distanceLabel.Parent = container
+	distanceLabel.Font = Enum.Font.GothamBold
+	distanceLabel.TextSize = 12
+	distanceLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	distanceLabel.TextStrokeTransparency = 0.25
+	distanceLabel.Parent = distanceBillboard
 
-	local healthBar = Instance.new("Frame")
-	healthBar.Size = UDim2.new(1, -14, 0, 8)
-	healthBar.Position = UDim2.new(0, 7, 0, 43)
-	healthBar.BackgroundColor3 = Color3.fromRGB(18, 28, 45)
-	healthBar.BorderSizePixel = 0
-	healthBar.Parent = container
-	addCorner(healthBar, 5)
+	local healthBillboard = Instance.new("BillboardGui")
+	healthBillboard.Name = "ESP_Health_" .. targetPlayer.Name
+	healthBillboard.AlwaysOnTop = true
+	healthBillboard.Enabled = false
+	healthBillboard.MaxDistance = 10000
+	healthBillboard.Size = UDim2.new(0, 8, 0, 58)
+	healthBillboard.StudsOffset = Vector3.new(2.35, 0.2, 0)
+	healthBillboard.Parent = espFolder
+
+	local healthBack = Instance.new("Frame")
+	healthBack.Size = UDim2.new(1, 0, 1, 0)
+	healthBack.BackgroundColor3 = Color3.fromRGB(18, 28, 45)
+	healthBack.BackgroundTransparency = 0.18
+	healthBack.BorderSizePixel = 0
+	healthBack.Parent = healthBillboard
+	addCorner(healthBack, 4)
+	addStroke(healthBack, Color3.fromRGB(0, 0, 0), 1, 0.45)
 
 	local healthFill = Instance.new("Frame")
+	healthFill.AnchorPoint = Vector2.new(0, 1)
+	healthFill.Position = UDim2.new(0, 0, 1, 0)
 	healthFill.Size = UDim2.new(1, 0, 1, 0)
 	healthFill.BackgroundColor3 = colors.green
 	healthFill.BorderSizePixel = 0
-	healthFill.Parent = healthBar
-	addCorner(healthFill, 5)
+	healthFill.Parent = healthBack
+	addCorner(healthFill, 4)
 
 	espEntries[targetPlayer] = {
-		billboard = billboard,
+		nameBillboard = nameBillboard,
+		distanceBillboard = distanceBillboard,
+		healthBillboard = healthBillboard,
 		nameLabel = nameLabel,
 		distanceLabel = distanceLabel,
 		healthFill = healthFill,
 	}
+end
+
+local function setEspEntryEnabled(entry, enabled)
+	if entry.nameBillboard then
+		entry.nameBillboard.Enabled = enabled
+	end
+
+	if entry.distanceBillboard then
+		entry.distanceBillboard.Enabled = enabled
+	end
+
+	if entry.healthBillboard then
+		entry.healthBillboard.Enabled = enabled
+	end
 end
 
 local function updateEsp()
@@ -1125,11 +1177,13 @@ local function updateEsp()
 			local maxHealth = math.max(humanoid.MaxHealth, 1)
 			local healthPercent = math.clamp(humanoid.Health / maxHealth, 0, 1)
 
-			entry.billboard.Adornee = head or root
-			entry.billboard.Enabled = true
+			entry.nameBillboard.Adornee = head or root
+			entry.distanceBillboard.Adornee = root
+			entry.healthBillboard.Adornee = root
+			setEspEntryEnabled(entry, true)
 			entry.nameLabel.Text = targetPlayer.Name
 			entry.distanceLabel.Text = tostring(distance) .. " studs"
-			entry.healthFill.Size = UDim2.new(healthPercent, 0, 1, 0)
+			entry.healthFill.Size = UDim2.new(1, 0, healthPercent, 0)
 
 			if healthPercent > 0.5 then
 				entry.healthFill.BackgroundColor3 = colors.green
@@ -1139,7 +1193,7 @@ local function updateEsp()
 				entry.healthFill.BackgroundColor3 = colors.red
 			end
 		else
-			entry.billboard.Enabled = false
+			setEspEntryEnabled(entry, false)
 		end
 	end
 end
