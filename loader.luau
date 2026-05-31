@@ -51,7 +51,6 @@ local vehicleFlyNextSeatScan = 0
 local hitboxesEnabled = false
 local hitboxSize = 8
 local hitboxEntries = {}
-local hitboxScanTimer = 0
 local espEnabled = false
 local espEntries = {}
 local espToggleKey = nil
@@ -72,13 +71,6 @@ local espCorpsesKey = nil
 local worldEspEntries = {}
 local worldEspTargets = {}
 local worldEspScanTimer = 0
-local WORLD_ESP_SCAN_INTERVAL = 3
-local WORLD_ESP_SCAN_LIMIT = 1500
-local WORLD_ESP_TARGET_LIMIT = 24
-local VEHICLE_SEAT_SCAN_INTERVAL = 2
-local VEHICLE_SEAT_SCAN_LIMIT = 900
-local HITBOX_SCAN_INTERVAL = 1
-local HITBOX_SCAN_LIMIT = 1200
 local chamsEnabled = false
 local chamsEntries = {}
 local unloaded = false
@@ -100,40 +92,6 @@ end
 
 local function trim(text)
 	return tostring(text or ""):match("^%s*(.-)%s*$")
-end
-
-local function scanDescendantsBudget(root, limit, callback)
-	local ok, children = pcall(function()
-		return root:GetChildren()
-	end)
-
-	if not ok then
-		return false, 0
-	end
-
-	local stack = children
-	local scanned = 0
-
-	while #stack > 0 and scanned < limit do
-		local instance = table.remove(stack)
-		scanned += 1
-
-		if callback(instance) then
-			return true, scanned
-		end
-
-		local childOk, childList = pcall(function()
-			return instance:GetChildren()
-		end)
-
-		if childOk then
-			for _, child in ipairs(childList) do
-				table.insert(stack, child)
-			end
-		end
-	end
-
-	return false, scanned
 end
 
 local function cframeToArray(cframe)
@@ -336,8 +294,8 @@ waypointSpotFolder.Name = "TeleportWaypointSpots"
 waypointSpotFolder.Parent = workspace
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 720, 0, 600)
-mainFrame.Position = UDim2.new(0.5, -360, 0.5, -300)
+mainFrame.Size = UDim2.new(0, 720, 0, 560)
+mainFrame.Position = UDim2.new(0.5, -360, 0.5, -280)
 mainFrame.BackgroundColor3 = colors.panel
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
@@ -855,13 +813,13 @@ local espVehiclesKeyButton = createKeyRow(espCategoryCard, "Vehicles Toggle Key"
 local espCorpsesButton = createToggleRow(espCategoryCard, "Corpses", 92, espCorpsesEnabled, 274, 228)
 local espCorpsesKeyButton = createKeyRow(espCategoryCard, "Corpses Toggle Key", 118, 274, 228)
 
-local hitboxCard = createSettingCard(playerPage, "Hitboxes", UDim2.new(0, 18, 0, 424), UDim2.new(0, 530, 0, 74))
-local hitboxButton = createButton(hitboxCard, "Hitboxes: Off", UDim2.new(0, 14, 0, 42), UDim2.new(0, 136, 0, 24), colors.buttonDark)
-createLabel(hitboxCard, "Entity Size", UDim2.new(0, 168, 0, 42), UDim2.new(0, 98, 0, 24), 12, colors.text).Font = Enum.Font.GothamBold
-local hitboxSizeBox = createTextBox(hitboxCard, tostring(hitboxSize), "8", UDim2.new(0, 272, 0, 42), UDim2.new(0, 52, 0, 24))
+local hitboxCard = createSettingCard(playerPage, "Hitboxes", UDim2.new(0, 18, 0, 424), UDim2.new(0, 530, 0, 48))
+local hitboxButton = createButton(hitboxCard, "Hitboxes: Off", UDim2.new(0, 14, 0, 34), UDim2.new(0, 136, 0, 24), colors.buttonDark)
+createLabel(hitboxCard, "Player Size", UDim2.new(0, 168, 0, 34), UDim2.new(0, 96, 0, 24), 12, colors.text).Font = Enum.Font.GothamBold
+local hitboxSizeBox = createTextBox(hitboxCard, tostring(hitboxSize), "8", UDim2.new(0, 270, 0, 34), UDim2.new(0, 52, 0, 24))
 hitboxSizeBox.TextSize = 12
 
-local playerStatus = createLabel(playerPage, "ESP uses budgeted scans to reduce lag. Hitboxes target players and NPCs.", UDim2.new(0, 18, 0, 510), UDim2.new(0, 530, 0, 26), 12, colors.muted)
+local playerStatus = createLabel(playerPage, "ESP is subtle. Hitboxes apply to current players only.", UDim2.new(0, 18, 0, 478), UDim2.new(0, 530, 0, 26), 12, colors.muted)
 playerStatus.Font = Enum.Font.Gotham
 
 createLabel(settingsPage, "Menu keybind", UDim2.new(0, 26, 0, 18), UDim2.new(0, 250, 0, 22), 13, colors.muted).Font = Enum.Font.GothamBold
@@ -1146,17 +1104,15 @@ local function getSeatedVehicleRoot()
 	end
 
 	if not seatPart and os.clock() >= vehicleFlyNextSeatScan then
-		vehicleFlyNextSeatScan = os.clock() + VEHICLE_SEAT_SCAN_INTERVAL
+		vehicleFlyNextSeatScan = os.clock() + 0.45
 
-		scanDescendantsBudget(workspace, VEHICLE_SEAT_SCAN_LIMIT, function(descendant)
+		for _, descendant in ipairs(workspace:GetDescendants()) do
 			if descendant:IsA("VehicleSeat") and descendant.Occupant == humanoid then
 				seatPart = descendant
 				vehicleFlyLastSeat = descendant
-				return true
+				break
 			end
-
-			return false
-		end)
+		end
 	end
 
 	if not seatPart or not seatPart:IsA("BasePart") then
@@ -1197,9 +1153,6 @@ local function ensureVehicleFlyForces(root, seatPart)
 		vehicleFlyGyro.Parent = root
 	end
 
-	pcall(function()
-		root:SetNetworkOwner(player)
-	end)
 end
 
 local function updateVehicleFlyKeybindButton()
@@ -1302,16 +1255,11 @@ local function updateVehicleFly(deltaTime)
 	end
 end
 
-local function getHitboxPart(model)
-	if not model or not model:IsA("Model") or model == player.Character then
-		return nil
-	end
-
-	return model:FindFirstChild("HumanoidRootPart")
-		or model:FindFirstChild("Torso")
-		or model:FindFirstChild("UpperTorso")
-		or model:FindFirstChild("Head")
-		or model:FindFirstChildWhichIsA("BasePart", true)
+local function getHitboxPart(character)
+	return getRoot(character)
+		or (character and character:FindFirstChild("Torso"))
+		or (character and character:FindFirstChild("UpperTorso"))
+		or (character and character:FindFirstChild("Head"))
 end
 
 local function restoreHitboxPart(part)
@@ -1347,13 +1295,12 @@ local function clearHitboxes()
 	hitboxEntries = {}
 end
 
-local function applyHitboxToModel(model)
-	local humanoid = model and model:FindFirstChildOfClass("Humanoid")
-	if not humanoid or humanoid.Health <= 0 then
+local function applyHitboxToPlayer(targetPlayer)
+	if not targetPlayer or targetPlayer == player then
 		return
 	end
 
-	local part = getHitboxPart(model)
+	local part = getHitboxPart(targetPlayer.Character)
 	if not part or not part:IsA("BasePart") then
 		return
 	end
@@ -1370,47 +1317,16 @@ local function applyHitboxToModel(model)
 
 	pcall(function()
 		part.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
-		part.Transparency = 0.72
+		part.Transparency = 0.7
 		part.CanCollide = false
 		part.Color = colors.orange
 		part.Material = Enum.Material.ForceField
 	end)
 end
 
-local function updateHitboxes(deltaTime)
-	if not hitboxesEnabled then
-		return
-	end
-
-	hitboxScanTimer += (deltaTime or 0)
-	if hitboxScanTimer < HITBOX_SCAN_INTERVAL then
-		return
-	end
-
-	hitboxScanTimer = 0
-
+local function applyHitboxes()
 	for _, targetPlayer in ipairs(Players:GetPlayers()) do
-		if targetPlayer ~= player then
-			applyHitboxToModel(targetPlayer.Character)
-		end
-	end
-
-	scanDescendantsBudget(workspace, HITBOX_SCAN_LIMIT, function(descendant)
-		if descendant:IsA("Humanoid") then
-			local model = descendant.Parent
-
-			if model and model:IsA("Model") and not Players:GetPlayerFromCharacter(model) then
-				applyHitboxToModel(model)
-			end
-		end
-
-		return false
-	end)
-
-	for part in pairs(hitboxEntries) do
-		if not part.Parent then
-			hitboxEntries[part] = nil
-		end
+		applyHitboxToPlayer(targetPlayer)
 	end
 end
 
@@ -1420,12 +1336,11 @@ local function setHitboxesEnabled(enabled)
 	hitboxButton.BackgroundColor3 = enabled and colors.green or colors.buttonDark
 
 	if enabled then
-		hitboxScanTimer = HITBOX_SCAN_INTERVAL
-		updateHitboxes(0)
-		playerStatus.Text = "Hitboxes extended for players and NPCs."
+		applyHitboxes()
+		playerStatus.Text = "Player hitboxes extended."
 	else
 		clearHitboxes()
-		playerStatus.Text = "Hitboxes restored."
+		playerStatus.Text = "Player hitboxes restored."
 	end
 end
 
@@ -1612,7 +1527,7 @@ local function addWorldTarget(targets, counts, category, instance, root, humanoi
 		return
 	end
 
-	if counts[category] and counts[category] >= WORLD_ESP_TARGET_LIMIT then
+	if counts[category] and counts[category] >= 45 then
 		return
 	end
 
@@ -1639,11 +1554,7 @@ local function refreshWorldEspTargets()
 		return
 	end
 
-	scanDescendantsBudget(workspace, WORLD_ESP_SCAN_LIMIT, function(descendant)
-		if counts.Zombies >= WORLD_ESP_TARGET_LIMIT and counts.Vehicles >= WORLD_ESP_TARGET_LIMIT and counts.Corpses >= WORLD_ESP_TARGET_LIMIT then
-			return true
-		end
-
+	for _, descendant in ipairs(workspace:GetDescendants()) do
 		if descendant:IsA("Humanoid") then
 			local model = descendant.Parent
 
@@ -1669,9 +1580,7 @@ local function refreshWorldEspTargets()
 			local instance = model or descendant
 			addWorldTarget(targets, counts, "Vehicles", instance, descendant, nil, instance)
 		end
-
-		return false
-	end)
+	end
 
 	worldEspTargets = targets
 end
@@ -1805,7 +1714,7 @@ local function updateWorldEsp(deltaTime)
 
 	worldEspScanTimer += (deltaTime or 0)
 
-	if worldEspScanTimer >= WORLD_ESP_SCAN_INTERVAL then
+	if worldEspScanTimer >= 0.75 then
 		worldEspScanTimer = 0
 		refreshWorldEspTargets()
 	end
@@ -2043,7 +1952,6 @@ end
 
 connect(RunService.Stepped, applyNoclip)
 connect(RunService.RenderStepped, updateVehicleFly)
-connect(RunService.RenderStepped, updateHitboxes)
 connect(RunService.RenderStepped, updateWaypointSpotDistances)
 connect(RunService.RenderStepped, updateEsp)
 connect(RunService.RenderStepped, updateChams)
@@ -2523,10 +2431,10 @@ connect(hitboxSizeBox.FocusLost, function()
 	if newSize then
 		hitboxSize = math.clamp(math.floor(newSize), 2, 35)
 		hitboxSizeBox.Text = tostring(hitboxSize)
-		hitboxScanTimer = HITBOX_SCAN_INTERVAL
 
 		if hitboxesEnabled then
-			updateHitboxes(0)
+			clearHitboxes()
+			applyHitboxes()
 		end
 
 		playerStatus.Text = "Hitbox size set to " .. tostring(hitboxSize) .. "."
@@ -2830,6 +2738,13 @@ connect(Players.PlayerAdded, function(newPlayer)
 	if espEnabled and espPlayersEnabled and chamsEnabled then
 		createChamsEntry(newPlayer)
 	end
+
+	connect(newPlayer.CharacterAdded, function()
+		if hitboxesEnabled then
+			task.wait(0.5)
+			applyHitboxToPlayer(newPlayer)
+		end
+	end)
 end)
 
 connect(Players.PlayerRemoving, function(leavingPlayer)
@@ -2844,6 +2759,17 @@ connect(Players.PlayerRemoving, function(leavingPlayer)
 	clearChamsEntry(leavingPlayer)
 	refreshPlayerDropdown()
 end)
+
+for _, existingPlayer in ipairs(Players:GetPlayers()) do
+	if existingPlayer ~= player then
+		connect(existingPlayer.CharacterAdded, function()
+			if hitboxesEnabled then
+				task.wait(0.5)
+				applyHitboxToPlayer(existingPlayer)
+			end
+		end)
+	end
+end
 
 local loadedWaypointsOk, loadedWaypointCount, loadedWaypointMessage = loadWaypointsFromDisk()
 refreshPlayerDropdown()
